@@ -35,7 +35,7 @@ gt rig list
 ## Manual Installation
 
 If npm installation fails, you can download binaries directly from:
-https://github.com/steveyegge/gastown/releases
+https://github.com/harness-institute/cursor-gastown/releases
 
 ## License
 
