@@ -15,7 +15,7 @@ builds:
     main: ./cmd/gt
     binary: gt
     env:
-      - CGO_ENABLED=1
+      - CGO_ENABLED=0
     goos:
       - linux
     goarch:
@@ -31,9 +31,7 @@ builds:
     main: ./cmd/gt
     binary: gt
     env:
-      - CGO_ENABLED=1
-      - CC=aarch64-linux-gnu-gcc
-      - CXX=aarch64-linux-gnu-g++
+      - CGO_ENABLED=0
     goos:
       - linux
     goarch:
@@ -84,9 +82,7 @@ builds:
     main: ./cmd/gt
     binary: gt
     env:
-      - CGO_ENABLED=1
-      - CC=x86_64-w64-mingw32-gcc
-      - CXX=x86_64-w64-mingw32-g++
+      - CGO_ENABLED=0
     goos:
       - windows
     goarch:

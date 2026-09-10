@@ -1,6 +1,6 @@
 {
   "name": "@harness-institute/cursor-gastown",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Cursor Gas Town CLI - multi-agent workspace manager for Cursor Agent (fork of Gas Town)",
   "main": "bin/gt.js",
   "bin": {
