@@ -3,6 +3,8 @@
 
 version: 2
 
+project_name: cursor-gastown
+
 before:
   hooks:
     # Ensure dependencies are up to date
@@ -150,27 +152,30 @@ changelog:
 
 release:
   github:
-    owner: gastownhall
-    name: gastown
+    owner: harness-institute
+    name: cursor-gastown
   draft: false
   prerelease: auto
   replace_existing_artifacts: true
   name_template: "v{{.Version}}"
   header: |
-    ## Gas Town v{{.Version}}
+    ## Cursor Gas Town v{{.Version}}
 
     Pre-compiled binaries for Linux, macOS (Intel & Apple Silicon), and Windows.
+    Based on upstream [gastownhall/gastown](https://github.com/gastownhall/gastown), tuned for the Cursor CLI.
 
     ### Installation
 
-    **Homebrew (macOS/Linux):**
-    ```bash
-    brew install gastown
-    ```
-
     **npm (Node.js):**
     ```bash
-    npm install -g @gastown/gt
+    npm install -g @harness-institute/cursor-gastown
+    ```
+
+    **From source (macOS; avoids Gatekeeper issues with unsigned binaries):**
+    ```bash
+    brew install dolt icu4c
+    git clone https://github.com/harness-institute/cursor-gastown
+    cd cursor-gastown && make install
     ```
 
     **Manual Install:**

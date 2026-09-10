@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-10
+
+### Changed
+
+- **Release pipeline** targets this repo: GoReleaser publishes to `harness-institute/cursor-gastown` with `cursor-gastown_*` archive names, the npm postinstall downloads the matching archives, and the fork keeps its own `0.x` version line (upstream base remains documented in FORK.md).
+- Removed the upstream Homebrew tap job from the release workflow (no `harness-institute` tap exists).
+
 ## [0.2.0] - 2026-09-10
 
 ### Changed

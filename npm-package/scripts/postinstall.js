@@ -160,10 +160,10 @@ async function install() {
     console.log(`Installing gt v${VERSION} for ${platformName}-${archName}...`);
 
     // Construct download URL
-    // Format: https://github.com/harness-institute/cursor-gastown/releases/download/v0.1.0/gastown_0.1.0_darwin_amd64.tar.gz
+    // Format: https://github.com/harness-institute/cursor-gastown/releases/download/v0.2.1/cursor-gastown_0.2.1_darwin_amd64.tar.gz
     const releaseVersion = VERSION;
     const archiveExt = platformName === 'windows' ? 'zip' : 'tar.gz';
-    const archiveName = `gastown_${releaseVersion}_${platformName}_${archName}.${archiveExt}`;
+    const archiveName = `cursor-gastown_${releaseVersion}_${platformName}_${archName}.${archiveExt}`;
     const downloadUrl = `https://github.com/harness-institute/cursor-gastown/releases/download/v${releaseVersion}/${archiveName}`;
 
     // Determine destination paths
