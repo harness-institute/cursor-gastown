@@ -10,9 +10,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/wisp"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/wisp"
 )
 
 var (

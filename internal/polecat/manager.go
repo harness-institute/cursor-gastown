@@ -18,18 +18,18 @@ import (
 
 	"github.com/gofrs/flock"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/doltserver"
-	"github.com/steveyegge/gastown/internal/git"
-	"github.com/steveyegge/gastown/internal/rig"
-	"github.com/steveyegge/gastown/internal/runtime"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/telemetry"
-	"github.com/steveyegge/gastown/internal/templates"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
+	"github.com/harness-institute/cursor-gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/rig"
+	"github.com/harness-institute/cursor-gastown/internal/runtime"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/telemetry"
+	"github.com/harness-institute/cursor-gastown/internal/templates"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 // Retry constants for Dolt operations (matching hook update pattern in sling.go).
@@ -1207,7 +1207,7 @@ func (m *Manager) removeWithOptionsLocked(name string, force, nuclear, selfNuke 
 	// This check runs unless selfNuke=true (polecat deleting its own worktree).
 	// When a polecat calls `gt done`, it's inside its worktree by design - the session
 	// will be killed immediately after, so breaking the shell is expected and harmless.
-	// See: https://github.com/steveyegge/gastown/issues/942
+	// See: https://github.com/harness-institute/cursor-gastown/issues/942
 	if !selfNuke {
 		cwd, cwdErr := os.Getwd()
 		if cwdErr == nil {

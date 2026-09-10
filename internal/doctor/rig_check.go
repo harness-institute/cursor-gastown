@@ -11,11 +11,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/doltserver"
-	"github.com/steveyegge/gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
+	"github.com/harness-institute/cursor-gastown/internal/git"
 )
 
 // RigIsGitRepoCheck verifies the rig has a valid mayor/rig git clone.

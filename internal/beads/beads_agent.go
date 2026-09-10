@@ -14,8 +14,8 @@ import (
 	"github.com/gofrs/flock"
 	beadsdk "github.com/steveyegge/beads"
 
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/telemetry"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/telemetry"
 )
 
 // lockAgentBead acquires an exclusive file lock for a specific agent bead ID.

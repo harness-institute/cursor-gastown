@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
 )
 
 func TestWispReaperInterval(t *testing.T) {

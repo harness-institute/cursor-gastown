@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/events"
-	"github.com/steveyegge/gastown/internal/nudge"
-	"github.com/steveyegge/gastown/internal/runtime"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/events"
+	"github.com/harness-institute/cursor-gastown/internal/nudge"
+	"github.com/harness-institute/cursor-gastown/internal/runtime"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 var hookCmd = &cobra.Command{

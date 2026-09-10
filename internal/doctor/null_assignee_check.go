@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/doltserver"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
 )
 
 // NullAssigneeCheck detects in_progress beads with a NULL or empty assignee.

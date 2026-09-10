@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/session"
 )
 
 // testDaemon creates a minimal Daemon for testing.

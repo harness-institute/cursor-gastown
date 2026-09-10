@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/polecat"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/polecat"
 )
 
 // fakeMRFinder is a test stub for the mrFinder interface used by applyMQCheck.

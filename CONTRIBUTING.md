@@ -204,7 +204,7 @@ for the full workflow. One guardrail to know about:
 - `make check-version-tag` verifies the `Version` constant in
   `internal/cmd/version.go` matches the tag at HEAD. The release workflow runs
   this before GoReleaser and fails the release on mismatch. Prevents recurrence
-  of [#3459](https://github.com/steveyegge/gastown/issues/3459). Run it locally
+  of [#3459](https://github.com/harness-institute/cursor-gastown/issues/3459). Run it locally
   after bumping if you want to catch drift before pushing the tag.
 
 ## Questions?

@@ -3,7 +3,7 @@ package doctor
 import (
 	"fmt"
 
-	"github.com/steveyegge/gastown/internal/version"
+	"github.com/harness-institute/cursor-gastown/internal/version"
 )
 
 // StaleBinaryCheck verifies the installed gt binary is up to date with the repo.

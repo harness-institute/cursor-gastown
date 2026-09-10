@@ -11,15 +11,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	gtgit "github.com/steveyegge/gastown/internal/git"
-	"github.com/steveyegge/gastown/internal/refinery"
-	"github.com/steveyegge/gastown/internal/rig"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	gtgit "github.com/harness-institute/cursor-gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/refinery"
+	"github.com/harness-institute/cursor-gastown/internal/rig"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 // BeadsMessage represents a message from gt mail inbox --json.
@@ -600,7 +600,7 @@ func (d *Daemon) setSessionEnvironment(sessionName string, roleConfig *beads.Rol
 
 	// Set any custom env vars from role config.
 	// Skip keys already set by AgentEnv to prevent TOML [env] from clobbering
-	// canonical qualified values (e.g., GT_ROLE). See: https://github.com/steveyegge/gastown/issues/2492
+	// canonical qualified values (e.g., GT_ROLE). See: https://github.com/harness-institute/cursor-gastown/issues/2492
 	if roleConfig != nil {
 		for k, v := range roleConfig.EnvVars {
 			if _, alreadySet := envVars[k]; alreadySet {

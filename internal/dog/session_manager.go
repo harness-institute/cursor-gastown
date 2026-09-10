@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/cli"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/cli"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // Session errors

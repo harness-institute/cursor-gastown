@@ -11,14 +11,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/cli"
-	"github.com/steveyegge/gastown/internal/events"
-	"github.com/steveyegge/gastown/internal/formula"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/telemetry"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/cli"
+	"github.com/harness-institute/cursor-gastown/internal/events"
+	"github.com/harness-institute/cursor-gastown/internal/formula"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/telemetry"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 type wispCreateJSON struct {
@@ -500,7 +500,7 @@ func runSlingFormula(ctx context.Context, args []string) (err error) {
 	fmt.Printf("%s Wisp created: %s\n", style.Bold.Render("✓"), wispRootID)
 
 	// Step 3: Hook the wisp bead with retry and verification.
-	// See: https://github.com/steveyegge/gastown/issues/148.
+	// See: https://github.com/harness-institute/cursor-gastown/issues/148.
 	hookDir := beads.ResolveHookDir(townRoot, wispRootID, "")
 	if err := hookBeadWithRetryFn(wispRootID, targetAgent, hookDir); err != nil {
 		return err

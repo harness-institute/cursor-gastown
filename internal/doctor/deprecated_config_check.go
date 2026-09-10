@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/steveyegge/gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/config"
 )
 
 // DeprecatedMergeQueueKeysCheck detects stale deprecated keys in merge_queue config.

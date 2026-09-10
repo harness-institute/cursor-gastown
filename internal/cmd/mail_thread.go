@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/mail"
-	"github.com/steveyegge/gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/mail"
+	"github.com/harness-institute/cursor-gastown/internal/style"
 )
 
 func runMailThread(cmd *cobra.Command, args []string) error {

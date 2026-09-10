@@ -24,10 +24,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/formula"
-	"github.com/steveyegge/gastown/internal/scheduler/capacity"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/formula"
+	"github.com/harness-institute/cursor-gastown/internal/scheduler/capacity"
 )
 
 // schedulerTestCounter generates unique prefixes for each test to isolate Dolt

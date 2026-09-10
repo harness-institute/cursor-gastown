@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/testutil"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/testutil"
 )
 
 // hookTestCounter generates unique prefixes for each hook test to isolate

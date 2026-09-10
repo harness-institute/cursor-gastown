@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/style"
 )
 
 type handshakeState int

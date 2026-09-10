@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 func TestNewManager(t *testing.T) {

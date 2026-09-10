@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	gitpkg "github.com/steveyegge/gastown/internal/git"
-	"github.com/steveyegge/gastown/internal/rig"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	gitpkg "github.com/harness-institute/cursor-gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/rig"
 )
 
 // testGitRepo creates a bare repo + working clone with an initial commit.

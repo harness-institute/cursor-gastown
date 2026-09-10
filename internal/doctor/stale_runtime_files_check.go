@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/config"
 )
 
 // buildPrefixSet builds a set of all known rig prefixes from rigs.json.

@@ -18,7 +18,7 @@ Gas City is the planned declarative layer on top of Gas Town — a role format a
 
 Before comparing external frameworks, it's important to understand Gas Town's architecture in detail, since the goal is to identify what to borrow for Gas City's declarative role format.
 
-**Repository:** [github.com/steveyegge/gastown](https://github.com/steveyegge/gastown) (Go, the `gt` binary)
+**Repository:** [github.com/harness-institute/cursor-gastown](https://github.com/harness-institute/cursor-gastown) (Go, the `gt` binary)
 **Companion:** [github.com/steveyegge/beads](https://github.com/steveyegge/beads) (Go, the `bd` binary)
 **Current version:** v0.6.0
 
@@ -626,10 +626,10 @@ The fact that Gas Town's architecture is unique is both its biggest risk and its
 - [Google ADK integrations ecosystem](https://developers.googleblog.com/supercharge-your-ai-agents-adk-integrations-ecosystem/)
 
 ### Gas Town / Gas City
-- [Gas Town GitHub](https://github.com/steveyegge/gastown) — source for role templates at `internal/templates/roles/*.md.tmpl`
+- [Gas Town GitHub](https://github.com/harness-institute/cursor-gastown) — source for role templates at `internal/templates/roles/*.md.tmpl`
 - [Beads GitHub](https://github.com/steveyegge/beads) — the `bd` binary, Dolt-backed work tracking
 - [Gas Town docs](https://docs.gastownhall.ai/)
-- [Gas Town glossary](https://github.com/steveyegge/gastown/blob/main/docs/glossary.md)
+- [Gas Town glossary](https://github.com/harness-institute/cursor-gastown/blob/main/docs/glossary.md)
 - [Welcome to Gas Town (Yegge)](https://steve-yegge.medium.com/welcome-to-gas-town-4f25ee16dd04)
 - [Welcome to the Wasteland (Yegge, March 2026)](https://steve-yegge.medium.com/welcome-to-the-wasteland-a-thousand-gas-towns-a5eb9bc8dc1f)
 - [Gas Town Emergency User Manual (Yegge)](https://steve-yegge.medium.com/gas-town-emergency-user-manual-cf0e4556d74b)
@@ -639,7 +639,7 @@ The fact that Gas Town's architecture is unique is both its biggest risk and its
 - [Gas Town architecture deep dive (DeepWiki)](https://deepwiki.com/numman-ali/n-skills/4.1.1-gas-town:-architecture-and-core-concepts)
 - [Gas Town reading notes (Torq)](https://reading.torqsoftware.com/notes/software/ai-ml/agentic-coding/2026-01-15-gas-town-multi-agent-orchestration-framework/)
 - [SE Daily Interview with Yegge](https://softwareengineeringdaily.com/2026/02/12/gas-town-beads-and-the-rise-of-agentic-development-with-steve-yegge/)
-- [Wasteland CLI PR #1552](https://github.com/steveyegge/gastown/pull/1552)
+- [Wasteland CLI PR #1552](https://github.com/harness-institute/cursor-gastown/pull/1552)
 
 ### Comparative
 - [AutoGen vs LangGraph vs CrewAI 2026](https://dev.to/synsun/autogen-vs-langgraph-vs-crewai-which-agent-framework-actually-holds-up-in-2026-3fl8)

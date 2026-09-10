@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // epicScheduleOpts holds options for epic schedule operations.

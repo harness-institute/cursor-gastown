@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
 )
 
 const (

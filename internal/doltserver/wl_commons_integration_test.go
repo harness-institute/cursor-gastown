@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/testutil"
+	"github.com/harness-institute/cursor-gastown/internal/testutil"
 )
 
 // startIsolatedDoltContainer starts a containerized Dolt server and returns

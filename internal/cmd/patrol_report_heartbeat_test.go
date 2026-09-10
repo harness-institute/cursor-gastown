@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/deacon"
+	"github.com/harness-institute/cursor-gastown/internal/deacon"
 )
 
 func TestStampDeaconHeartbeatOnReport_StampsAllStores(t *testing.T) {

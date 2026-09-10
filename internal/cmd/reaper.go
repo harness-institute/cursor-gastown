@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	agentconfig "github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/reaper"
-	"github.com/steveyegge/gastown/internal/style"
+	agentconfig "github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/reaper"
+	"github.com/harness-institute/cursor-gastown/internal/style"
 )
 
 var (

@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
 )
 
 // ResolveSessionTheme returns the configured tmux theme for a session.

@@ -91,4 +91,4 @@ Ephemeral loop maintaining system heartbeat. Patrol agents (Deacon, Witness) con
 
 ---
 
-*This glossary was contributed by [Clay Shirky](https://github.com/cshirky) in [Issue #80](https://github.com/steveyegge/gastown/issues/80).*
+*This glossary was contributed by [Clay Shirky](https://github.com/cshirky) in [Issue #80](https://github.com/harness-institute/cursor-gastown/issues/80).*

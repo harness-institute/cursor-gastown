@@ -8,11 +8,11 @@ import (
 
 	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 var (

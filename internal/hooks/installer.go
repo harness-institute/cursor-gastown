@@ -14,8 +14,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/steveyegge/gastown/internal/atomicfile"
-	"github.com/steveyegge/gastown/internal/hookutil"
+	"github.com/harness-institute/cursor-gastown/internal/atomicfile"
+	"github.com/harness-institute/cursor-gastown/internal/hookutil"
 )
 
 //go:embed templates/*

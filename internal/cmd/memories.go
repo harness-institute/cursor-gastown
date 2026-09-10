@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/style"
 )
 
 var memoriesTypeFilter string

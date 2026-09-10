@@ -7,9 +7,9 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/crew"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/crew"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 func runCrewRename(cmd *cobra.Command, args []string) error {

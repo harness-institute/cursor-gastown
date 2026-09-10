@@ -6,11 +6,11 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/deacon"
-	"github.com/steveyegge/gastown/internal/formula"
-	"github.com/steveyegge/gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/deacon"
+	"github.com/harness-institute/cursor-gastown/internal/formula"
+	"github.com/harness-institute/cursor-gastown/internal/style"
 )
 
 var (

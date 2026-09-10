@@ -12,17 +12,17 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/deacon"
-	"github.com/steveyegge/gastown/internal/nudge"
-	"github.com/steveyegge/gastown/internal/runtime"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/util"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/deacon"
+	"github.com/harness-institute/cursor-gastown/internal/nudge"
+	"github.com/harness-institute/cursor-gastown/internal/runtime"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // getDeaconSessionName returns the Deacon session name.

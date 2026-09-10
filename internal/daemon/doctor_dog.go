@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
 )
 
 // Operational constants — timeouts needed to perform checks.

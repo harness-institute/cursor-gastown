@@ -3,7 +3,7 @@ package doctor
 import (
 	"fmt"
 
-	"github.com/steveyegge/gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 // DiskSpaceCheck verifies that the filesystem has sufficient free space.

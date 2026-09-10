@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/dog"
-	"github.com/steveyegge/gastown/internal/mail"
-	"github.com/steveyegge/gastown/internal/plugin"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/dog"
+	"github.com/harness-institute/cursor-gastown/internal/mail"
+	"github.com/harness-institute/cursor-gastown/internal/plugin"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // Dog lifecycle defaults — now config-driven via operational.daemon thresholds.

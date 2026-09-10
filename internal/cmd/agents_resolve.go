@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
 )
 
 var (

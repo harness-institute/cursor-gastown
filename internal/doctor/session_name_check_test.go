@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/session"
 )
 
 // testRegistryForNameCheck returns a PrefixRegistry with a few known rigs

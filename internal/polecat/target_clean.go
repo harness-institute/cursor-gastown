@@ -30,7 +30,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/config"
 )
 
 // TargetCleanPolicy describes when to clean a polecat's target/ on reuse.

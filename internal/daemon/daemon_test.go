@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 func TestDefaultConfig(t *testing.T) {

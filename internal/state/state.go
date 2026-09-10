@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/atomicfile"
+	"github.com/harness-institute/cursor-gastown/internal/atomicfile"
 	"github.com/google/uuid"
 )
 

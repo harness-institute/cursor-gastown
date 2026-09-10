@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/deacon"
-	"github.com/steveyegge/gastown/internal/polecat"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/deacon"
+	"github.com/harness-institute/cursor-gastown/internal/polecat"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 var heartbeatCmd = &cobra.Command{

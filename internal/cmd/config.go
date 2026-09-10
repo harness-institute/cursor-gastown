@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/daemon"
-	"github.com/steveyegge/gastown/internal/polecat"
-	"github.com/steveyegge/gastown/internal/scheduler/capacity"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/daemon"
+	"github.com/harness-institute/cursor-gastown/internal/polecat"
+	"github.com/harness-institute/cursor-gastown/internal/scheduler/capacity"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 var configCmd = &cobra.Command{

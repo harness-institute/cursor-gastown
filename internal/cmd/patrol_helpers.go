@@ -7,11 +7,11 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/cli"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/refinery"
-	"github.com/steveyegge/gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/cli"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/refinery"
+	"github.com/harness-institute/cursor-gastown/internal/style"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )

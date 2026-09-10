@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/events"
-	"github.com/steveyegge/gastown/internal/rig"
-	"github.com/steveyegge/gastown/internal/scheduler/capacity"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/events"
+	"github.com/harness-institute/cursor-gastown/internal/rig"
+	"github.com/harness-institute/cursor-gastown/internal/scheduler/capacity"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // shouldDeferDispatch checks the town config to decide dispatch mode.

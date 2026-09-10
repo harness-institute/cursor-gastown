@@ -177,7 +177,7 @@ Purpose: The job board — work items posted by rigs and available for claiming.
 | claimed_by | varchar(255) | NO | NULL | Handle of the rig working on this item, references `rigs.handle`, e.g. `jorisdevreede` |
 | status | varchar(32) | NO | `'open'` | Lifecycle state: `open`, `claimed`, `in_review`, `validated` |
 | effort_level | varchar(16) | NO | `'medium'` | Estimated effort: `trivial`, `small`, `medium`, `large`, `epic` |
-| evidence_url | text | NO | NULL | URL pointing to where completed work can be reviewed, e.g. `https://github.com/steveyegge/gastown/pull/2328` |
+| evidence_url | text | NO | NULL | URL pointing to where completed work can be reviewed, e.g. `https://github.com/harness-institute/cursor-gastown/pull/2328` |
 | sandbox_required | tinyint(1) | NO | 0 | Whether this item requires sandboxed execution (1 = yes, 0 = no) |
 | sandbox_scope | json | NO | NULL | Permissions the sandbox grants, e.g. `{"fs": ["read"], "net": ["none"]}` |
 | sandbox_min_tier | varchar(32) | NO | NULL | Minimum trust level or sandbox tier required, e.g. `trusted`, `maintainer` |
@@ -193,7 +193,7 @@ Purpose: Evidence records proving that a wanted item was completed, forming a ta
 | id | varchar(64) | YES | — | Primary key. Unique identifier, e.g. `c-e5f6a7b8` |
 | wanted_id | varchar(64) | NO | NULL | The wanted item this completion fulfills, references `wanted.id`, e.g. `w-bd-003` |
 | completed_by | varchar(255) | NO | NULL | Handle of the rig that did the work, references `rigs.handle`, e.g. `jorisdevreede` |
-| evidence | text | NO | NULL | Description of what was done, links to PRs, commits, or artifacts, e.g. `https://github.com/steveyegge/gastown/pull/2328` |
+| evidence | text | NO | NULL | Description of what was done, links to PRs, commits, or artifacts, e.g. `https://github.com/harness-institute/cursor-gastown/pull/2328` |
 | validated_by | varchar(255) | NO | NULL | Handle of the rig that reviewed and validated, references `rigs.handle`, e.g. `gastown-ci` |
 | stamp_id | varchar(64) | NO | NULL | The reputation stamp issued upon validation, references `stamps.id`, e.g. `s-demo-001` |
 | parent_completion_id | varchar(64) | NO | NULL | Links to a prior completion in another fork, references `completions.id` — enables chained provenance across forks, e.g. `c-upstream-001` |

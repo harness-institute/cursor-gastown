@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   # Guard: go.mod must not contain replace directives — they break `go install`.
-  # See: https://github.com/steveyegge/gastown/issues/2230
+  # See: https://github.com/harness-institute/cursor-gastown/issues/2230
   check-no-replace-directives:
     name: Reject go.mod replace directives
     runs-on: ubuntu-latest
@@ -24,8 +24,8 @@ jobs:
           if grep -qE '^replace\s' go.mod; then
             echo "ERROR: go.mod contains replace directives."
             echo ""
-            echo "Replace directives break 'go install github.com/steveyegge/gastown/cmd/gt@latest'."
-            echo "See: https://github.com/steveyegge/gastown/issues/2230"
+            echo "Replace directives break 'go install github.com/harness-institute/cursor-gastown/cmd/gt@latest'."
+            echo "See: https://github.com/harness-institute/cursor-gastown/issues/2230"
             echo ""
             echo "Found:"
             grep -n '^replace' go.mod

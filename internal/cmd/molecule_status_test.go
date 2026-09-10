@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
 )
 
 func TestOutputMoleculeStatus_StandaloneFormulaShowsVars(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/hooks"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/hooks"
 )
 
 func TestSyncTargetCreatesNew(t *testing.T) {

@@ -14,23 +14,23 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/crew"
-	"github.com/steveyegge/gastown/internal/deps"
-	"github.com/steveyegge/gastown/internal/doltserver"
-	"github.com/steveyegge/gastown/internal/git"
-	"github.com/steveyegge/gastown/internal/hooks"
-	"github.com/steveyegge/gastown/internal/polecat"
-	"github.com/steveyegge/gastown/internal/refinery"
-	"github.com/steveyegge/gastown/internal/rig"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/suggest"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/wisp"
-	"github.com/steveyegge/gastown/internal/witness"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/crew"
+	"github.com/harness-institute/cursor-gastown/internal/deps"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
+	"github.com/harness-institute/cursor-gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/hooks"
+	"github.com/harness-institute/cursor-gastown/internal/polecat"
+	"github.com/harness-institute/cursor-gastown/internal/refinery"
+	"github.com/harness-institute/cursor-gastown/internal/rig"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/suggest"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/wisp"
+	"github.com/harness-institute/cursor-gastown/internal/witness"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 	"golang.org/x/term"
 )
 
@@ -79,7 +79,7 @@ For a repo you don't own, use fork mode (fetch upstream, push to fork).
 See docs/guides/fork-rig-setup.md for setup, verification, and recovery.
 
 Example:
-  gt rig add gastown https://github.com/steveyegge/gastown
+  gt rig add gastown https://github.com/harness-institute/cursor-gastown
   gt rig add my_project git@github.com:user/repo.git --prefix mp
   gt rig add existing_rig --adopt
   gt rig add gastown https://github.com/gastownhall/gastown \
@@ -658,7 +658,7 @@ func runRigAdd(cmd *cobra.Command, args []string) error {
 	// Refresh tmux cycle bindings on all running sessions so the new rig's
 	// prefix is recognized by C-b n/p. Without this, existing sessions have
 	// a stale grep pattern that doesn't include the new prefix.
-	// See: https://github.com/steveyegge/gastown/issues/2299
+	// See: https://github.com/harness-institute/cursor-gastown/issues/2299
 	refreshCycleBindingsOnExistingSessions()
 
 	elapsed := time.Since(startTime)

@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/git"
-	"github.com/steveyegge/gastown/internal/polecat"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/polecat"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 var tapPolecatStopCmd = &cobra.Command{

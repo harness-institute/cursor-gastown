@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	agentconfig "github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/doltserver"
+	agentconfig "github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
 )
 
 const doltCmdTimeout = 15 * time.Second

@@ -13,18 +13,18 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/cli"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/events"
-	"github.com/steveyegge/gastown/internal/git"
-	"github.com/steveyegge/gastown/internal/mail"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/ui"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/cli"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/events"
+	"github.com/harness-institute/cursor-gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/mail"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/ui"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 var handoffCmd = &cobra.Command{
@@ -350,7 +350,7 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 	// That would kill the gt handoff process itself before it can call RespawnPane,
 	// leaving the pane dead with no respawn. RespawnPane's -k flag handles killing
 	// atomically - tmux kills the old process and spawns the new one together.
-	// See: https://github.com/steveyegge/gastown/issues/859 (pane is dead bug)
+	// See: https://github.com/harness-institute/cursor-gastown/issues/859 (pane is dead bug)
 	//
 	// For orphan prevention, we rely on respawn-pane -k which sends SIGHUP/SIGTERM.
 	// If orphans still occur, the solution is to adjust the restart command to

@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/polecat"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/polecat"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 func TestWitnessHasSubmittableWorkUsesBranchTargetStatus(t *testing.T) {

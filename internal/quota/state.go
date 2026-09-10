@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	"github.com/steveyegge/gastown/internal/atomicfile"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/atomicfile"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 // Manager handles quota state persistence with file locking.

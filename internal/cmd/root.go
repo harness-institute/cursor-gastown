@@ -11,15 +11,15 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/cli"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/polecat"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/telemetry"
-	"github.com/steveyegge/gastown/internal/ui"
-	"github.com/steveyegge/gastown/internal/version"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/cli"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/polecat"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/telemetry"
+	"github.com/harness-institute/cursor-gastown/internal/ui"
+	"github.com/harness-institute/cursor-gastown/internal/version"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 var rootCmd = &cobra.Command{

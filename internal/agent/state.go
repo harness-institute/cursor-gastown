@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/steveyegge/gastown/internal/atomicfile"
+	"github.com/harness-institute/cursor-gastown/internal/atomicfile"
 )
 
 // StateManager handles loading and saving agent state to disk.

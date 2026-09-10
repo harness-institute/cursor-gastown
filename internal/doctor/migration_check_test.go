@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/doltserver"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
 )
 
 // setupDoltDB creates a fake Dolt database directory under .dolt-data/.

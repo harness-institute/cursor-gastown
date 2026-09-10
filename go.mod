@@ -1,4 +1,4 @@
-module github.com/steveyegge/gastown
+module github.com/harness-institute/cursor-gastown
 
 go 1.26.2
 

@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/dog"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/dog"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // testHandlerDaemon creates a minimal Daemon with a logger for handler tests.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
 )
 
 func TestNew(t *testing.T) {

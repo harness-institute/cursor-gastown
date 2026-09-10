@@ -8,8 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // attachToTmuxSession attaches to a tmux/psmux session on Windows.

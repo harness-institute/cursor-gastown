@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 const (

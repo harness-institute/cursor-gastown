@@ -3,7 +3,7 @@ package doctor
 import (
 	"fmt"
 
-	"github.com/steveyegge/gastown/internal/hooks"
+	"github.com/harness-institute/cursor-gastown/internal/hooks"
 )
 
 // HooksBaseCheck warns when ~/.gt/hooks-base.json is missing.

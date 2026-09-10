@@ -25,7 +25,7 @@ bd dep add sh-task-2 sh-task-1 --type=blocks
 gt sling sh-task-1 sh-task-2 sh-task-3 gastown
 ```
 
-What happens today (with PR [#1759](https://github.com/steveyegge/gastown/pull/1759)):
+What happens today (with PR [#1759](https://github.com/harness-institute/cursor-gastown/pull/1759)):
 - Batch sling creates **one convoy** tracking all 3 tasks
 - Rig is auto-resolved from bead prefixes (explicit rig is deprecated)
 - Tasks sling sequentially with 2s delays, sharing 1 convoy
@@ -119,12 +119,12 @@ Fixing them benefits the entire system.
 
 | # | Failure | Fixed by | Status |
 |---|---------|----------|--------|
-| 7 | Blocked tasks get slung (blocks deps ignored) | `isIssueBlocked` | PR [#1759](https://github.com/steveyegge/gastown/pull/1759) (open) |
-| 8 | Epics get slung to polecats (no type filter) | `IsSlingableType` | PR [#1759](https://github.com/steveyegge/gastown/pull/1759) (open) |
+| 7 | Blocked tasks get slung (blocks deps ignored) | `isIssueBlocked` | PR [#1759](https://github.com/harness-institute/cursor-gastown/pull/1759) (open) |
+| 8 | Epics get slung to polecats (no type filter) | `IsSlingableType` | PR [#1759](https://github.com/harness-institute/cursor-gastown/pull/1759) (open) |
 | 9 | Cross-rig close events invisible to daemon | Multi-rig SDK polling | **Merged** |
 | 10 | Daemon doesn't feed next task after close | Continuation feeding | **Merged** |
 | 11 | Refinery convoy check passes wrong path (never works) | Call removed | **Merged** |
-| 12 | First dispatch failure abandons entire convoy | Dispatch failure iteration | PR [#1759](https://github.com/steveyegge/gastown/pull/1759) (open) |
+| 12 | First dispatch failure abandons entire convoy | Dispatch failure iteration | PR [#1759](https://github.com/harness-institute/cursor-gastown/pull/1759) (open) |
 | 13 | Stranded scan is reporting-only, doesn't auto-dispatch | `feedFirstReady` | **Merged** |
 
 ---
@@ -359,7 +359,7 @@ more reliable.
 
 ## Summary: what to do next
 
-1. **Now:** Get PR [#1759](https://github.com/steveyegge/gastown/pull/1759) (feeder safety guards) reviewed and merged to
+1. **Now:** Get PR [#1759](https://github.com/harness-institute/cursor-gastown/pull/1759) (feeder safety guards) reviewed and merged to
    complete Milestone 0.
 
 2. **Next:** Start Milestone 1 (pipeline reliability) and/or Milestone 2

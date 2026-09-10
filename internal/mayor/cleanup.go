@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 const (

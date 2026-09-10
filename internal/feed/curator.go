@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/events"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/events"
 )
 
 // FeedFile is the name of the curated feed file.

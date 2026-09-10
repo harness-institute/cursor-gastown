@@ -111,7 +111,7 @@ name = "mol-polecat-work"
 version = "4.0.0"                          # Semver
 author = "steve@gastown.io"                # Author identity
 license = "MIT"
-repository = "https://github.com/steveyegge/gastown"
+repository = "https://github.com/harness-institute/cursor-gastown"
 
 [formula.registry]
 uri = "hop://molmall.gastown.io/formulas/mol-polecat-work@4.0.0"

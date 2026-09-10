@@ -48,11 +48,11 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gofrs/flock"
 	beadssdk "github.com/steveyegge/beads"
-	"github.com/steveyegge/gastown/internal/atomicfile"
-	"github.com/steveyegge/gastown/internal/beads"
-	configpkg "github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/atomicfile"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	configpkg "github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/style"
 )
 
 // EnsureDoltIdentity configures dolt global identity (user.name, user.email)

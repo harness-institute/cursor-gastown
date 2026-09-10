@@ -5,7 +5,7 @@ package git
 import (
 	"os/exec"
 
-	"github.com/steveyegge/gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 // copyDirPreserving copies a directory using robocopy, which preserves symlinks,

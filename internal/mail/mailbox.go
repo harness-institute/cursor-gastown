@@ -17,9 +17,9 @@ import (
 
 	"github.com/gofrs/flock"
 	beadsdk "github.com/steveyegge/beads"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/runtime"
-	"github.com/steveyegge/gastown/internal/telemetry"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/runtime"
+	"github.com/harness-institute/cursor-gastown/internal/telemetry"
 )
 
 // timeNow is a function that returns the current time. It can be overridden in tests.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 func TestBootSpawnAgentFlag(t *testing.T) {

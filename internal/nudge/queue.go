@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
 )
 
 // Priority levels for nudge delivery.

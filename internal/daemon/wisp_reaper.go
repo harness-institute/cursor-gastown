@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	agentconfig "github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/doltserver"
-	"github.com/steveyegge/gastown/internal/reaper"
-	"github.com/steveyegge/gastown/internal/util"
+	agentconfig "github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
+	"github.com/harness-institute/cursor-gastown/internal/reaper"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 const (

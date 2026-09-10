@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/dog"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/dog"
 )
 
 func writeDogStateForDispatchTest(t *testing.T, townRoot, name string, state *dog.DogState) {

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/steveyegge/gastown/internal/atomicfile"
-	"github.com/steveyegge/gastown/internal/lock"
+	"github.com/harness-institute/cursor-gastown/internal/atomicfile"
+	"github.com/harness-institute/cursor-gastown/internal/lock"
 )
 
 const (

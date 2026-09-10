@@ -14,18 +14,18 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/cli"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/lock"
-	"github.com/steveyegge/gastown/internal/refinery"
-	"github.com/steveyegge/gastown/internal/state"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/telemetry"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/util"
-	"github.com/steveyegge/gastown/internal/workspace"
-	worktreeintegrity "github.com/steveyegge/gastown/internal/worktree"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/cli"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/lock"
+	"github.com/harness-institute/cursor-gastown/internal/refinery"
+	"github.com/harness-institute/cursor-gastown/internal/state"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/telemetry"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
+	worktreeintegrity "github.com/harness-institute/cursor-gastown/internal/worktree"
 )
 
 var primeHookMode bool
@@ -735,7 +735,7 @@ func hasWorkflowAttachment(attachment *beads.AttachmentFields) bool {
 // Fallback: queries by assignee for agents without an agent bead.
 // For polecats and crew, retries up to 3 times with 2-second delays to handle
 // the timing race where hook state hasn't propagated by the time gt prime runs.
-// See: https://github.com/steveyegge/gastown/issues/1438
+// See: https://github.com/harness-institute/cursor-gastown/issues/1438
 //
 // Returns (nil, nil) if no work is found.
 // Returns (nil, err) if all attempts failed due to database errors — the caller
@@ -751,7 +751,7 @@ func findAgentWork(ctx RoleContext) (*beads.Issue, error) {
 	// new Dolt connections by the time gt prime runs on session startup.
 	// Dogs are especially affected since dispatch is fire-and-forget. (GH#2748)
 	// Uses exponential backoff: 500ms, 1s, 2s, 4s, 8s (total ~15.5s max).
-	// See: https://github.com/steveyegge/gastown/issues/2389
+	// See: https://github.com/harness-institute/cursor-gastown/issues/2389
 	//
 	// On compact/resume, the agent already has work context in memory.
 	// A single attempt suffices — retries would add ~15s of latency to

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/wisp"
+	"github.com/harness-institute/cursor-gastown/internal/wisp"
 )
 
 // TestAreScheduledFailClosed verifies that areScheduled fails closed when

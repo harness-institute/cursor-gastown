@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/doltserver"
-	"github.com/steveyegge/gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
+	"github.com/harness-institute/cursor-gastown/internal/git"
 )
 
 func setupTestTown(t *testing.T) (string, *config.RigsConfig) {
@@ -2151,7 +2151,7 @@ esac
 	if err := os.MkdirAll(beadsDir, 0755); err != nil {
 		t.Fatalf("mkdir .beads: %v", err)
 	}
-	configYAML := "prefix: gt\nsync.remote: \"git+https://github.com/steveyegge/gastown.git\"\n"
+	configYAML := "prefix: gt\nsync.remote: \"git+https://github.com/harness-institute/cursor-gastown.git\"\n"
 	if err := os.WriteFile(filepath.Join(beadsDir, "config.yaml"), []byte(configYAML), 0644); err != nil {
 		t.Fatalf("write config.yaml: %v", err)
 	}

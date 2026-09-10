@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/polecat"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/polecat"
 )
 
 type fakeReuseMRShower struct {

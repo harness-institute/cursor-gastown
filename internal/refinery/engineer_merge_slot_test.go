@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/rig"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/rig"
 )
 
 func TestAcquireMainPushSlot_ImmediateAcquire(t *testing.T) {

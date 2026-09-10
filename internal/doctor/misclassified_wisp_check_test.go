@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
 )
 
 // TestFixWorkDir_HQ verifies that Fix() resolves the "hq" rig name to the

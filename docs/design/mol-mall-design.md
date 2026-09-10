@@ -94,7 +94,7 @@ GET /formulas/{name}
     versions: [4.0.0, 3.2.1, 3.2.0, ...]
     latest: 4.0.0
     author: steve@gastown.io
-    repository: https://github.com/steveyegge/gastown
+    repository: https://github.com/harness-institute/cursor-gastown
     license: MIT
     capabilities:
       primary: [go, testing]

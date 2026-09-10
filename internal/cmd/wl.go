@@ -6,11 +6,11 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/doltserver"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/wasteland"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/wasteland"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // wl command flags
@@ -33,7 +33,7 @@ sovereign fork of a shared commons database containing the wanted board
 Getting started:
   gt wl join steveyegge/wl-commons   # Join the default wasteland
 
-See https://github.com/steveyegge/gastown for more information.`,
+See https://github.com/harness-institute/cursor-gastown for more information.`,
 }
 
 var wlJoinCmd = &cobra.Command{

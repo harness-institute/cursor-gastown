@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/formula"
-	"github.com/steveyegge/gastown/internal/plugin"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/formula"
+	"github.com/harness-institute/cursor-gastown/internal/plugin"
 )
 
 // PatrolMoleculesExistCheck verifies that patrol formulas are accessible.

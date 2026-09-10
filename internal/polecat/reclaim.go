@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/session"
 )
 
 func brokenIdleReclaimDispositionBlocker(d WorkstateDisposition) string {

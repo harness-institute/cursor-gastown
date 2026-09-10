@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/cli"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/hooks"
-	"github.com/steveyegge/gastown/internal/templates/commands"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/cli"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/hooks"
+	"github.com/harness-institute/cursor-gastown/internal/templates/commands"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // EnsureSettingsForRole provisions all agent-specific configuration for a role.

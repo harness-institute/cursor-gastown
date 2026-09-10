@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	gtconfig "github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/doltserver"
+	gtconfig "github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
 )
 
 func TestReadBeadsRuntimeConfigServerMetadata(t *testing.T) {

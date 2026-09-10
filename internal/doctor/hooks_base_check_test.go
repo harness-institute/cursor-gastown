@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/hooks"
+	"github.com/harness-institute/cursor-gastown/internal/hooks"
 )
 
 func TestHooksBaseCheck_Missing(t *testing.T) {

@@ -3,9 +3,9 @@ package doctor
 import (
 	"fmt"
 
-	"github.com/steveyegge/gastown/internal/events"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/events"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // ZombieSessionCheck detects tmux sessions that are valid Gas Town sessions

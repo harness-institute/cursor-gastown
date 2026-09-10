@@ -170,7 +170,7 @@ gt sling gt-task1 gt-task2 gt-task3 gastown
 
 ## Stage-launch workflow
 
-> Implemented in [PR #1820](https://github.com/steveyegge/gastown/pull/1820). Depends on the feeder safety guards from [PR #1759](https://github.com/steveyegge/gastown/pull/1759). Design docs: `docs/design/convoy/stage-launch/prd.md`, `docs/design/convoy/stage-launch/testing.md`.
+> Implemented in [PR #1820](https://github.com/harness-institute/cursor-gastown/pull/1820). Depends on the feeder safety guards from [PR #1759](https://github.com/harness-institute/cursor-gastown/pull/1759). Design docs: `docs/design/convoy/stage-launch/prd.md`, `docs/design/convoy/stage-launch/testing.md`.
 
 The stage-launch workflow is a two-phase convoy creation path that validates dependencies and computes wave dispatch order **before** any work is dispatched. This is the preferred path for epic delivery.
 

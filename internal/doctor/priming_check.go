@@ -4,15 +4,15 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/steveyegge/gastown/internal/cli"
+	"github.com/harness-institute/cursor-gastown/internal/cli"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/runtime"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/runtime"
 )
 
 // PrimingCheck verifies the priming subsystem is correctly configured.

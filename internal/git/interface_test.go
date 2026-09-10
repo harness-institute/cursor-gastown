@@ -1,8 +1,8 @@
 package git_test
 
 import (
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/git"
 )
 
 // Compile-time assertion: Git must satisfy BranchChecker.

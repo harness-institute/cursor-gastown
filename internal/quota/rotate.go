@@ -3,8 +3,8 @@ package quota
 import (
 	"fmt"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 // RotateResult holds the result of rotating a single session.

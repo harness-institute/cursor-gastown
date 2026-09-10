@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/events"
+	"github.com/harness-institute/cursor-gastown/internal/events"
 )
 
 func writeTrailEventsFile(t *testing.T, path string, entries []events.Event) {

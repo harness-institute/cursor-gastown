@@ -3,7 +3,7 @@ package cmd
 import (
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
 )
 
 // TestIsDogTarget verifies the dog target pattern matching.

@@ -1,4 +1,4 @@
-module github.com/steveyegge/gastown/plugins/dolt-snapshots
+module github.com/harness-institute/cursor-gastown/plugins/dolt-snapshots
 
 go 1.23
 

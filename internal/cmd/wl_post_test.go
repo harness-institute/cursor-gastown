@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/doltserver"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
 )
 
 func TestPostWanted_Success(t *testing.T) {

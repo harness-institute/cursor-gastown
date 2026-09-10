@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	gitpkg "github.com/steveyegge/gastown/internal/git"
-	"github.com/steveyegge/gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	gitpkg "github.com/harness-institute/cursor-gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/session"
 )
 
 // TestDoneUsesResolveBeadsDir verifies that the done command correctly uses

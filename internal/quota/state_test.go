@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
 )
 
 // setupTestTown creates a temporary town root with mayor directory.

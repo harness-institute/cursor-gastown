@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
 )
 
 // TestConvoyResolveBeadsDir_RegressionEmptyConvoy is a regression test for

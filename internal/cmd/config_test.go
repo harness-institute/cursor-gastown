@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/config"
 )
 
 // setupTestTown creates a minimal Gas Town workspace for testing.

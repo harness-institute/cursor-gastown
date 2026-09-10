@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/events"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/events"
 )
 
 // setupSeanceTestEnv creates a test environment with multiple accounts and sessions.

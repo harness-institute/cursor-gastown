@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // legacySocketTmux is the subset of tmux.Tmux used by legacy socket cleanup.

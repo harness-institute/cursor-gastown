@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/doltserver"
-	"github.com/steveyegge/gastown/internal/atomicfile"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
+	"github.com/harness-institute/cursor-gastown/internal/atomicfile"
 )
 
 var verifyExpectedDatabasesAtConfig = doltserver.VerifyExpectedDatabasesAtConfig

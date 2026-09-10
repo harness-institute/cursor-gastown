@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
 )
 
 func captureConvoyStdoutErr(t *testing.T, fn func() error) (string, error) {

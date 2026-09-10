@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/lock"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/lock"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // IdentityCollisionCheck checks for agent identity collisions and stale locks.

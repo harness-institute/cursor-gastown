@@ -13,19 +13,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/channelevents"
-	"github.com/steveyegge/gastown/internal/cli"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/daemon"
-	"github.com/steveyegge/gastown/internal/formula"
-	rigpkg "github.com/steveyegge/gastown/internal/rig"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/telemetry"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/channelevents"
+	"github.com/harness-institute/cursor-gastown/internal/cli"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/daemon"
+	"github.com/harness-institute/cursor-gastown/internal/formula"
+	rigpkg "github.com/harness-institute/cursor-gastown/internal/rig"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/telemetry"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // resolveBeadDir returns the directory to run bd commands for a given bead ID.
@@ -1262,7 +1262,7 @@ func isHookedAgentDead(assignee string) bool {
 // hookBeadWithRetry hooks a bead to a target agent with exponential backoff retry
 // and post-hook verification. This ensures the hook sticks even under Dolt concurrency.
 // Fails fast on configuration/initialization errors (gt-2ra).
-// See: https://github.com/steveyegge/gastown/issues/148
+// See: https://github.com/harness-institute/cursor-gastown/issues/148
 func hookBeadWithRetry(beadID, targetAgent, hookDir string) error {
 	return hookBeadWithRetryWithTownRoot(beadID, targetAgent, hookDir, "")
 }

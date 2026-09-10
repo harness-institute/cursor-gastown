@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	agentconfig "github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/daemon"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/templates"
-	"github.com/steveyegge/gastown/internal/util"
-	"github.com/steveyegge/gastown/internal/workspace"
+	agentconfig "github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/daemon"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/templates"
+	"github.com/harness-institute/cursor-gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 var daemonCmd = &cobra.Command{

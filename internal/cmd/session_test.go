@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/polecat"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/polecat"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 func TestSessionInfoJSONOutput(t *testing.T) {

@@ -12,13 +12,13 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/quota"
-	"github.com/steveyegge/gastown/internal/style"
-	ttmux "github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/util"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/quota"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	ttmux "github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // quotaLogger adapts style.PrintWarning to the quota.Logger interface.

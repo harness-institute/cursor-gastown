@@ -4,12 +4,12 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/refinery"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/wisp"
-	"github.com/steveyegge/gastown/internal/witness"
+	"github.com/harness-institute/cursor-gastown/internal/refinery"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/wisp"
+	"github.com/harness-institute/cursor-gastown/internal/witness"
 )
 
 // RigStatusKey is the wisp config key for rig operational status.

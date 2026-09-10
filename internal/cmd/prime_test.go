@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/checkpoint"
-	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/checkpoint"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
 )
 
 // captureStdout redirects os.Stdout to a pipe, calls fn, then returns whatever

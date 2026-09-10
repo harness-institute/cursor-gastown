@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/steveyegge/gastown/internal/mail"
+	"github.com/harness-institute/cursor-gastown/internal/mail"
 )
 
 // ErrNoHandler is returned when a message is a recognized protocol message

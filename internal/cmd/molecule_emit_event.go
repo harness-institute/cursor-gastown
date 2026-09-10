@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/channelevents"
+	"github.com/harness-institute/cursor-gastown/internal/channelevents"
 )
 
 var (

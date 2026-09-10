@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 // MinDoltVersion is the minimum compatible dolt version for this Gas Town release.

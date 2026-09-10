@@ -3,7 +3,7 @@ package refinery
 import (
 	"errors"
 
-	"github.com/steveyegge/gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/git"
 )
 
 // githubPRProvider implements PRProvider using the gh CLI via git.Git.

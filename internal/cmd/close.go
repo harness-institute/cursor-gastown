@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	beadsdk "github.com/steveyegge/beads"
-	"github.com/steveyegge/gastown/internal/convoy"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/convoy"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 
 	"github.com/spf13/cobra"
 )

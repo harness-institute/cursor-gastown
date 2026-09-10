@@ -9,8 +9,8 @@ import (
 	"time"
 
 	beadsdk "github.com/steveyegge/beads"
-	"github.com/steveyegge/gastown/internal/beads"
-	gitpkg "github.com/steveyegge/gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	gitpkg "github.com/harness-institute/cursor-gastown/internal/git"
 )
 
 type prepushStore struct {

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/formula"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/formula"
 )
 
 // writeRigsJSON creates a mayor/rigs.json with a single rig entry.

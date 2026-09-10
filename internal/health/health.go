@@ -16,8 +16,8 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/steveyegge/gastown/internal/doltserver"
-	"github.com/steveyegge/gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 // TCPCheck performs a TCP connection check to host:port.

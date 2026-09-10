@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/constants"
-	gtgit "github.com/steveyegge/gastown/internal/git"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/util"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	gtgit "github.com/harness-institute/cursor-gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 const (

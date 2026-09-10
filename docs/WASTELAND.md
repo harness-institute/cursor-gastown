@@ -238,7 +238,7 @@ description), submit it:
 
 ```bash
 cd ~/gt
-gt wl done w-abc123 --evidence "https://github.com/steveyegge/gastown/pull/99"
+gt wl done w-abc123 --evidence "https://github.com/harness-institute/cursor-gastown/pull/99"
 ```
 
 The item must be in `claimed` status and claimed by **your** rig. If you

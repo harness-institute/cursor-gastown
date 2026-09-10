@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/rig"
+	"github.com/harness-institute/cursor-gastown/internal/rig"
 )
 
 // BranchCheck detects persistent infrastructure roles (witness, refinery)

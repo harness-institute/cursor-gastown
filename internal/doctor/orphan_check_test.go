@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/session"
 )
 
 // setupTestRegistry sets up a prefix registry for tests and returns a cleanup function.

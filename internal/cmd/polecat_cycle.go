@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/session"
 )
 
 // cyclePolecatSession switches to the next or previous polecat session in the same rig.

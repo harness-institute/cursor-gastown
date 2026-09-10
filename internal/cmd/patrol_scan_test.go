@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/witness"
+	"github.com/harness-institute/cursor-gastown/internal/witness"
 )
 
 type progressDiagnostics struct {

@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/dog"
-	"github.com/steveyegge/gastown/internal/mail"
-	"github.com/steveyegge/gastown/internal/plugin"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/dog"
+	"github.com/harness-institute/cursor-gastown/internal/mail"
+	"github.com/harness-institute/cursor-gastown/internal/plugin"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // Dog command flags
@@ -1191,7 +1191,7 @@ func runDogDispatch(cmd *cobra.Command, args []string) error {
 		// Roll back the work assignment: without a running session the dog
 		// cannot read its mail, leaving it stuck in StateWorking (zombie).
 		// Clearing work returns it to idle so it can be re-dispatched.
-		// See: github.com/steveyegge/gastown/issues/2748
+		// See: github.com/harness-institute/cursor-gastown/issues/2748
 		if clearErr := mgr.ClearWork(targetDog.Name); clearErr != nil {
 			warn := fmt.Sprintf("session start failed AND rollback failed for dog %s — dog stuck in StateWorking, run: gt dog health-check --auto-clear: %v", targetDog.Name, clearErr)
 			result.Warnings = append(result.Warnings, warn)
@@ -1213,7 +1213,7 @@ func runDogDispatch(cmd *cobra.Command, args []string) error {
 
 	// Verify the work state write is readable. A read-back failure here
 	// indicates state corruption, not a timing race.
-	// See: github.com/steveyegge/gastown/issues/2748
+	// See: github.com/harness-institute/cursor-gastown/issues/2748
 	result.WorkConfirmed = false
 	if d, getErr := mgr.Get(targetDog.Name); getErr != nil {
 		warn := fmt.Sprintf("dog dispatch: could not verify work assignment for %s: %v", targetDog.Name, getErr)

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/deps"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/deps"
 )
 
 func TestBuildBdInitArgs_AlwaysIncludesServerPortWithoutReinit(t *testing.T) {

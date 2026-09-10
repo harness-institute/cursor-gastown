@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // LinkedPaneCheck detects tmux sessions that share panes,

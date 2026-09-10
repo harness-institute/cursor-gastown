@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/atomicfile"
+	"github.com/harness-institute/cursor-gastown/internal/atomicfile"
 )
 
 // HookEntry represents a single hook matcher with its associated hooks.
