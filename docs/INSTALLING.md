@@ -17,7 +17,7 @@ Native source installs require these host tools. Homebrew and Docker installs pr
 | **sqlite3** | any | `sqlite3 --version` | Usually pre-installed on macOS; Linux packages are commonly named `sqlite3` |
 | **ICU4C dev headers** | varies | `pkg-config --modversion icu-uc`, `dpkg -l libicu-dev`, `rpm -q libicu-devel`, or `brew --prefix icu4c` | Source builds need Debian/Ubuntu `libicu-dev`, Fedora/RHEL `libicu-devel` with `pkgconf-pkg-config`, macOS `icu4c`, or native Windows MSYS2 ICU/toolchain/pkg-config packages |
 | **Dolt** | >= 2.0.7 | `dolt version` | macOS: `brew install dolt`; other platforms: see [dolthub/dolt](https://github.com/dolthub/dolt?tab=readme-ov-file#installation) |
-| **Beads** | >= 0.57.0 | `bd version` | Installed by `brew install gastown`, or from source with `go install github.com/steveyegge/beads/cmd/bd@latest` |
+| **Beads** | >= 1.2.0 | `bd version` | `brew install beads`, or `go install github.com/steveyegge/beads/cmd/bd@latest` |
 | **Docker Compose** | v2+ | `docker compose version` | Docker setup only. Install Docker Desktop or Docker Engine with the Compose plugin. |
 
 ### Optional (for Full Stack Mode)
@@ -94,7 +94,7 @@ Install Go and Dolt first, then install `gt` and `bd` with Go. The binaries land
 Native Windows source builds that compile the ICU-backed query layer need an MSYS2 UCRT64 or MinGW64 shell with matching `icu`, `toolchain`, and `pkg-config` packages. The repository's Windows CI uses `pacboy -S icu:p toolchain:p pkg-config:p` before running Go commands; plain PowerShell/MSVC is not enough for that CGO build.
 
 ```powershell
-go install github.com/steveyegge/gastown/cmd/gt@latest
+go install github.com/harness-institute/cursor-gastown/cmd/gt@latest
 go install github.com/steveyegge/beads/cmd/bd@latest
 ```
 
@@ -125,7 +125,7 @@ dolt version
 On Linux and Windows, install `gt` and `bd` with Go after installing Dolt separately:
 
 ```bash
-go install github.com/steveyegge/gastown/cmd/gt@latest
+go install github.com/harness-institute/cursor-gastown/cmd/gt@latest
 go install github.com/steveyegge/beads/cmd/bd@latest
 ```
 
@@ -141,7 +141,7 @@ instead.
 brew install dolt icu4c
 go install github.com/steveyegge/beads/cmd/bd@latest
 export PATH="$HOME/.local/bin:$HOME/go/bin:$PATH"
-git clone https://github.com/steveyegge/gastown.git
+git clone https://github.com/harness-institute/cursor-gastown.git
 cd gastown
 make install
 ```

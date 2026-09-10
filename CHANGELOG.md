@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Rebased onto upstream Gas Town** ([gastownhall/gastown](https://github.com/gastownhall/gastown) @ 649b832, Sep 2026). The fork is no longer a frozen January snapshot; it tracks current upstream with Harness Institute branding.
+- **Go module path** renamed to `github.com/harness-institute/cursor-gastown` (breaking for old `go install github.com/cursorworkshop/cursor-gastown/...` users).
+- **npm package** renamed to `@harness-institute/cursor-gastown`; repository URLs point at harness-institute.
+- **Cursor agent preset** adds `--trust` and `--approve-mcps` for non-interactive tmux sessions.
+- **README** documents Cursor-first install, beads 1.2+, Go 1.26+, and current role→model matrix.
+
+### Dropped (superseded by upstream)
+
+- Legacy `internal/cursor/` adapter package — upstream `internal/config/agents.go` agent presets.
+- Legacy `internal/council/` multi-model router — upstream cost tiers and `role_agents`.
+- beads 0.x `--no-daemon` / `bd sync` CLI assumptions — upstream uses beads 1.x as a Go module.
+
 ## [1.2.1] - 2026-06-06
 
 ### Fixed

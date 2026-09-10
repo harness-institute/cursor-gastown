@@ -1,10 +1,39 @@
-# Gas Town
+# Cursor Gas Town
 
-**Multi-agent orchestration system for Claude Code, GitHub Copilot, and other AI agents with persistent work tracking**
+**Multi-agent orchestration for Cursor CLI — fork of [Gas Town](https://github.com/gastownhall/gastown) with persistent work tracking**
+
+> Maintained by [Harness Institute](https://github.com/harness-institute). Upstream lives at
+> [gastownhall/gastown](https://github.com/gastownhall/gastown). See [FORK.md](FORK.md) for lineage.
+
+## Quick install
+
+```bash
+go install github.com/harness-institute/cursor-gastown/cmd/gt@latest
+go install github.com/steveyegge/beads/cmd/bd@latest   # beads 1.2+
+export PATH="$PATH:$(go env GOPATH)/bin"
+gt install ~/gt --git
+```
+
+**Prerequisites:** Go 1.26+, beads (`bd`) **1.2+**, Cursor CLI (`cursor-agent`), git 2.25+, tmux 3.0+ (recommended).
+
+### Default Cursor role → model matrix (Sep 2026)
+
+Configure per-role models via `settings/agents.json` or cost tiers (`gt config cost-tier`).
+Suggested Cursor Agent models for Gas Town roles:
+
+| Role | Suggested model | Rationale |
+|------|-----------------|-----------|
+| Mayor | `claude-opus-5-thinking-high` | Strategic coordination |
+| Polecat | `claude-sonnet-5-thinking-high` | Implementation work |
+| Refinery | `gpt-5.6-sol-high` | Different model family for review |
+| Witness | `gemini-3.7-flash-high` | Fast, cheap monitoring |
+| Crew | `auto` | Interactive preference |
+
+Run `cursor-agent models` for your account's current list. The built-in `cursor` agent preset passes `-f --approve-mcps --trust` for autonomous tmux sessions.
 
 ## Overview
 
-Gas Town is a workspace manager that lets you coordinate multiple AI coding agents (Claude Code, GitHub Copilot, Codex, Gemini, and others) working on different tasks. Instead of losing context when agents restart, Gas Town persists work state in git-backed hooks, enabling reliable multi-agent workflows.
+Cursor Gas Town is a workspace manager that coordinates multiple AI coding agents (Cursor Agent, Claude Code, Copilot, Codex, Gemini, and others) on different tasks. Work state persists in git-backed hooks via [beads](https://github.com/steveyegge/beads), enabling reliable multi-agent workflows that survive restarts.
 
 ### What Problem Does This Solve?
 
@@ -154,7 +183,7 @@ Avoid `go install` on macOS. The unsigned binary it produces gets killed by Gate
 brew install dolt icu4c
 go install github.com/steveyegge/beads/cmd/bd@latest
 export PATH="$HOME/.local/bin:$HOME/go/bin:$PATH"
-git clone https://github.com/steveyegge/gastown.git
+git clone https://github.com/harness-institute/cursor-gastown.git
 cd gastown
 make install
 ```
@@ -164,7 +193,7 @@ make install
 Install Dolt by following the [Dolt installation guide](https://github.com/dolthub/dolt#installation), then install `gt` and `bd` with `go install`.
 
 ```bash
-go install github.com/steveyegge/gastown/cmd/gt@latest
+go install github.com/harness-institute/cursor-gastown/cmd/gt@latest
 go install github.com/steveyegge/beads/cmd/bd@latest
 ```
 
@@ -180,7 +209,7 @@ source ~/.bashrc
 Install Dolt first by following the [Dolt installation guide](https://github.com/dolthub/dolt#installation). Unlike the macOS Homebrew path, `go install` does not install Dolt. Then install `gt` and `bd` with `go install`.
 
 ```powershell
-go install github.com/steveyegge/gastown/cmd/gt@latest
+go install github.com/harness-institute/cursor-gastown/cmd/gt@latest
 go install github.com/steveyegge/beads/cmd/bd@latest
 ```
 
