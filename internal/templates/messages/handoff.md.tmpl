@@ -8,7 +8,7 @@
 
 {{ if .GitBranch }}
 **Git branch**: {{ .GitBranch }}
-{{ if .GitDirty }}[!] Working tree has uncommitted changes{{ end }}
+{{ if .GitDirty }}⚠️ Working tree has uncommitted changes{{ end }}
 {{ end }}
 
 {{ if .PendingMail }}

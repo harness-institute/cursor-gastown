@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/style"
 )
 
 var releaseReason string
@@ -57,10 +57,10 @@ func runRelease(cmd *cobra.Command, args []string) error {
 		}
 
 		if err != nil {
-			fmt.Printf("%s Failed to release %s: %v\n", style.Dim.Render("[X]"), id, err)
+			fmt.Printf("%s Failed to release %s: %v\n", style.Dim.Render("✗"), id, err)
 			failed++
 		} else {
-			fmt.Printf("%s Released %s → open\n", style.Bold.Render("OK"), id)
+			fmt.Printf("%s Released %s → open\n", style.Bold.Render("✓"), id)
 			released++
 		}
 	}

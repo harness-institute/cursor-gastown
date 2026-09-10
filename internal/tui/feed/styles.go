@@ -3,18 +3,19 @@ package feed
 
 import (
 	"github.com/charmbracelet/lipgloss"
-	"github.com/cursorworkshop/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/ui"
 )
 
-// Color palette
+// Color palette using Ayu theme colors from ui package
 var (
-	colorPrimary   = lipgloss.Color("12")  // Blue
-	colorSuccess   = lipgloss.Color("10")  // Green
-	colorWarning   = lipgloss.Color("11")  // Yellow
-	colorError     = lipgloss.Color("9")   // Red
-	colorDim       = lipgloss.Color("8")   // Gray
-	colorHighlight = lipgloss.Color("14")  // Cyan
-	colorAccent    = lipgloss.Color("13")  // Magenta
+	colorPrimary   = ui.ColorAccent                                            // Blue
+	colorSuccess   = ui.ColorPass                                              // Green
+	colorWarning   = ui.ColorWarn                                              // Yellow
+	colorError     = ui.ColorFail                                              // Red
+	colorDim       = ui.ColorMuted                                             // Gray
+	colorHighlight = lipgloss.AdaptiveColor{Light: "#59c2ff", Dark: "#59c2ff"} // Cyan (Ayu)
+	colorAccent    = lipgloss.AdaptiveColor{Light: "#d2a6ff", Dark: "#d2a6ff"} // Purple (Ayu)
 )
 
 // Styles for the feed TUI
@@ -99,14 +100,14 @@ var (
 				BorderForeground(colorPrimary).
 				Padding(0, 1)
 
-	// Role icons - uses centralized icons from constants package
+	// Role icons - uses centralized emojis from constants package
 	RoleIcons = map[string]string{
-		constants.RoleMayor:    constants.IconMayor,
-		constants.RoleWitness:  constants.IconWitness,
-		constants.RoleRefinery: constants.IconRefinery,
-		constants.RoleCrew:     constants.IconCrew,
-		constants.RolePolecat:  constants.IconPolecat,
-		constants.RoleDeacon:   constants.IconDeacon,
+		constants.RoleMayor:    constants.EmojiMayor,
+		constants.RoleWitness:  constants.EmojiWitness,
+		constants.RoleRefinery: constants.EmojiRefinery,
+		constants.RoleCrew:     constants.EmojiCrew,
+		constants.RolePolecat:  constants.EmojiPolecat,
+		constants.RoleDeacon:   constants.EmojiDeacon,
 	}
 
 	// MQ event styles
@@ -124,36 +125,73 @@ var (
 	EventMergeSkippedStyle = lipgloss.NewStyle().
 				Foreground(colorWarning)
 
+	// Problems view styles
+	ProblemsModeStyle = lipgloss.NewStyle().
+				Foreground(colorError).
+				Bold(true)
+
+	ProblemsPanelStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorDim).
+				Padding(0, 1)
+
+	ProblemsHeaderStyle = lipgloss.NewStyle().
+				Foreground(colorError).
+				Bold(true)
+
+	WorkingHeaderStyle = lipgloss.NewStyle().
+				Foreground(colorSuccess).
+				Bold(true)
+
+	IdleHeaderStyle = lipgloss.NewStyle().
+			Foreground(colorDim).
+			Bold(true)
+
+	SelectedStyle = lipgloss.NewStyle().
+			Foreground(colorHighlight).
+			Bold(true)
+
+	// Agent state styles
+	GUPPStyle = lipgloss.NewStyle().
+			Foreground(colorError).
+			Bold(true)
+
+	StalledStyle = lipgloss.NewStyle().
+			Foreground(colorError)
+
+	ZombieStyle = lipgloss.NewStyle().
+			Foreground(colorDim)
+
 	// Event symbols
 	EventSymbols = map[string]string{
 		"create":   "+",
-		"update":   ">",
-		"complete": "*",
-		"fail":     "x",
-		"delete":   "-",
-		"pin":      "^",
+		"update":   "→",
+		"complete": "✓",
+		"fail":     "✗",
+		"delete":   "⊘",
+		"pin":      "📌",
 		// Witness patrol events
-		"patrol_started":  constants.IconWitness,
-		"patrol_complete": "*",
-		"polecat_checked": ".",
-		"polecat_nudged":  "!",
-		"escalation_sent": "^",
+		"patrol_started":  constants.EmojiWitness,
+		"patrol_complete": "✓",
+		"polecat_checked": "·",
+		"polecat_nudged":  "⚡",
+		"escalation_sent": "⬆",
 		// Merge events
-		"merge_started": "#",
-		"merged":        "*",
-		"merge_failed":  "x",
-		"merge_skipped": "-",
+		"merge_started": "⚙",
+		"merged":        "✓",
+		"merge_failed":  "✗",
+		"merge_skipped": "⊘",
 		// General gt events
-		"sling":   ">",
-		"hook":    "[hook]",
-		"unhook":  "[unhook]",
-		"handoff": "[handoff]",
-		"done":    "*",
-		"mail":    "@",
-		"spawn":   "[spawn]",
-		"kill":    "[kill]",
-		"nudge":   "!",
-		"boot":    "[boot]",
-		"halt":    "[halt]",
+		"sling":   "🎯",
+		"hook":    "🪝",
+		"unhook":  "↩",
+		"handoff": "🤝",
+		"done":    "✓",
+		"mail":    "✉",
+		"spawn":   "🚀",
+		"kill":    "💀",
+		"nudge":   "⚡",
+		"boot":    "🔌",
+		"halt":    "⏹",
 	}
 )

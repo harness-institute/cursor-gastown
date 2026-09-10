@@ -4,11 +4,12 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/refinery"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
-	"github.com/cursorworkshop/cursor-gastown/internal/wisp"
-	"github.com/cursorworkshop/cursor-gastown/internal/witness"
+	"github.com/harness-institute/cursor-gastown/internal/refinery"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/wisp"
+	"github.com/harness-institute/cursor-gastown/internal/witness"
 )
 
 // RigStatusKey is the wisp config key for rig operational status.
@@ -18,9 +19,9 @@ const RigStatusKey = "status"
 const RigStatusParked = "parked"
 
 var rigParkCmd = &cobra.Command{
-	Use:   "park <rig>",
-	Short: "Park a rig (stops agents, daemon won't auto-restart)",
-	Long: `Park a rig to temporarily disable it.
+	Use:   "park <rig>...",
+	Short: "Park one or more rigs (stops agents, daemon won't auto-restart)",
+	Long: `Park rigs to temporarily disable them.
 
 Parking a rig:
   - Stops the witness if running
@@ -35,15 +36,15 @@ This is a Level 1 (local/ephemeral) operation:
 
 Examples:
   gt rig park gastown
-  gt rig park beads`,
-	Args: cobra.ExactArgs(1),
+  gt rig park beads gastown mayor`,
+	Args: cobra.MinimumNArgs(1),
 	RunE: runRigPark,
 }
 
 var rigUnparkCmd = &cobra.Command{
-	Use:   "unpark <rig>",
-	Short: "Unpark a rig (allow daemon to auto-restart agents)",
-	Long: `Unpark a rig to resume normal operation.
+	Use:   "unpark <rig>...",
+	Short: "Unpark one or more rigs (allow daemon to auto-restart agents)",
+	Long: `Unpark rigs to resume normal operation.
 
 Unparking a rig:
   - Removes the parked status from the wisp layer
@@ -52,8 +53,8 @@ Unparking a rig:
 
 Examples:
   gt rig unpark gastown
-  gt rig unpark beads`,
-	Args: cobra.ExactArgs(1),
+  gt rig unpark beads gastown mayor`,
+	Args: cobra.MinimumNArgs(1),
 	RunE: runRigUnpark,
 }
 
@@ -63,8 +64,25 @@ func init() {
 }
 
 func runRigPark(cmd *cobra.Command, args []string) error {
-	rigName := args[0]
+	var errs []error
 
+	for _, rigName := range args {
+		if err := parkOneRig(rigName); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", rigName, err))
+		}
+	}
+
+	if len(errs) > 0 {
+		for _, err := range errs {
+			fmt.Printf("%s %v\n", style.Error.Render("✗"), err)
+		}
+		return fmt.Errorf("failed to park %d rig(s)", len(errs))
+	}
+
+	return nil
+}
+
+func parkOneRig(rigName string) error {
 	// Get rig and town root
 	townRoot, r, err := getRig(rigName)
 	if err != nil {
@@ -78,7 +96,7 @@ func runRigPark(cmd *cobra.Command, args []string) error {
 	t := tmux.NewTmux()
 
 	// Stop witness if running
-	witnessSession := fmt.Sprintf("gt-%s-witness", rigName)
+	witnessSession := session.WitnessSessionName(session.PrefixFor(rigName))
 	witnessRunning, _ := t.HasSession(witnessSession)
 	if witnessRunning {
 		fmt.Printf("  Stopping witness...\n")
@@ -91,7 +109,7 @@ func runRigPark(cmd *cobra.Command, args []string) error {
 	}
 
 	// Stop refinery if running
-	refinerySession := fmt.Sprintf("gt-%s-refinery", rigName)
+	refinerySession := session.RefinerySessionName(session.PrefixFor(rigName))
 	refineryRunning, _ := t.HasSession(refinerySession)
 	if refineryRunning {
 		fmt.Printf("  Stopping refinery...\n")
@@ -110,7 +128,7 @@ func runRigPark(cmd *cobra.Command, args []string) error {
 	}
 
 	// Output
-	fmt.Printf("%s Rig %s parked (local only)\n", style.Success.Render("[OK]"), rigName)
+	fmt.Printf("%s Rig %s parked (local only)\n", style.Success.Render("✓"), rigName)
 	for _, msg := range stoppedAgents {
 		fmt.Printf("  %s\n", msg)
 	}
@@ -120,8 +138,25 @@ func runRigPark(cmd *cobra.Command, args []string) error {
 }
 
 func runRigUnpark(cmd *cobra.Command, args []string) error {
-	rigName := args[0]
+	var errs []error
 
+	for _, rigName := range args {
+		if err := unparkOneRig(rigName); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", rigName, err))
+		}
+	}
+
+	if len(errs) > 0 {
+		for _, err := range errs {
+			fmt.Printf("%s %v\n", style.Error.Render("✗"), err)
+		}
+		return fmt.Errorf("failed to unpark %d rig(s)", len(errs))
+	}
+
+	return nil
+}
+
+func unparkOneRig(rigName string) error {
 	// Get rig and town root
 	townRoot, _, err := getRig(rigName)
 	if err != nil {
@@ -134,16 +169,24 @@ func runRigUnpark(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("clearing parked status: %w", err)
 	}
 
-	fmt.Printf("%s Rig %s unparked\n", style.Success.Render("[OK]"), rigName)
+	fmt.Printf("%s Rig %s unparked\n", style.Success.Render("✓"), rigName)
 	fmt.Printf("  Daemon can now auto-restart agents\n")
 	fmt.Printf("  Use '%s' to start agents immediately\n", style.Dim.Render("gt rig start "+rigName))
 
 	return nil
 }
 
-// IsRigParked checks if a rig is parked in the wisp layer.
-// This function is exported for use by the daemon.
+// IsRigParked checks if a rig is parked.
+// Checks the wisp layer (ephemeral) first, then falls back to the rig
+// identity bead's status:parked label (persistent). This ensures parked
+// state survives wisp cleanup. (Fixes upstream #2079)
 func IsRigParked(townRoot, rigName string) bool {
+	// Check wisp layer first (fast, local)
 	wispCfg := wisp.NewConfig(townRoot, rigName)
-	return wispCfg.GetString(RigStatusKey) == RigStatusParked
+	if wispCfg.GetString(RigStatusKey) == RigStatusParked {
+		return true
+	}
+
+	// Fall back to persistent bead label
+	return hasRigBeadLabel(townRoot, rigName, "status:parked")
 }

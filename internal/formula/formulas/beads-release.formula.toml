@@ -25,6 +25,7 @@ gt sling beads/polecats/p1 --formula beads-release --var version=0.37.0
 formula = "beads-release"
 type = "workflow"
 version = 1
+pour = true
 
 [vars.version]
 description = "The semantic version to release (e.g., 0.37.0)"
@@ -131,6 +132,7 @@ Update all component versions atomically.
 
 This updates:
 - cmd/bd/version.go
+- .claude-plugin/*.json
 - integrations/beads-mcp/pyproject.toml
 - integrations/beads-mcp/src/beads_mcp/__init__.py
 - npm-package/package.json
@@ -148,6 +150,7 @@ Confirm all versions match {{version}}.
 
 ```bash
 grep 'Version = ' cmd/bd/version.go
+jq -r '.version' .claude-plugin/plugin.json
 jq -r '.version' npm-package/package.json
 grep 'version = ' integrations/beads-mcp/pyproject.toml
 ```

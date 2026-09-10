@@ -1,56 +1,60 @@
 // Package style provides consistent terminal styling using Lipgloss.
+// Uses the Ayu theme colors from internal/ui for semantic consistency.
 package style
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/harness-institute/cursor-gastown/internal/ui"
 )
 
 var (
-	// Success style for positive outcomes
+	// Success style for positive outcomes (green)
 	Success = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("10")). // Green
+		Foreground(ui.ColorPass).
 		Bold(true)
 
-	// Warning style for cautionary messages
+	// Warning style for cautionary messages (yellow)
 	Warning = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("11")). // Yellow
+		Foreground(ui.ColorWarn).
 		Bold(true)
 
-	// Error style for failures
+	// Error style for failures (red)
 	Error = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("9")). // Red
+		Foreground(ui.ColorFail).
 		Bold(true)
 
-	// Info style for informational messages
+	// Info style for informational messages (blue)
 	Info = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("12")) // Blue
+		Foreground(ui.ColorAccent)
 
-	// Dim style for secondary information
+	// Dim style for secondary information (gray)
 	Dim = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8")) // Gray
+		Foreground(ui.ColorMuted)
 
 	// Bold style for emphasis
 	Bold = lipgloss.NewStyle().
 		Bold(true)
 
 	// SuccessPrefix is the checkmark prefix for success messages
-	SuccessPrefix = Success.Render("[OK]")
+	SuccessPrefix = Success.Render(ui.IconPass)
 
 	// WarningPrefix is the warning prefix
-	WarningPrefix = Warning.Render("[!]")
+	WarningPrefix = Warning.Render(ui.IconWarn)
 
 	// ErrorPrefix is the error prefix
-	ErrorPrefix = Error.Render("[X]")
+	ErrorPrefix = Error.Render(ui.IconFail)
 
 	// ArrowPrefix for action indicators
 	ArrowPrefix = Info.Render("→")
 )
 
-// PrintWarning prints a warning message with consistent formatting.
+// PrintWarning prints a warning message to stderr with consistent formatting.
 // The format and args work like fmt.Printf.
+// Writes to stderr so warnings never contaminate structured (JSON) output on stdout.
 func PrintWarning(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("%s %s\n", Warning.Render("[!] Warning:"), msg)
+	fmt.Fprintf(os.Stderr, "%s %s\n", Warning.Render(ui.IconWarn+" Warning:"), msg)
 }

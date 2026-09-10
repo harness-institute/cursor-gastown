@@ -5,9 +5,9 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 var dndCmd = &cobra.Command{
@@ -26,7 +26,13 @@ Subcommands:
 
 Without arguments, toggles DND mode.
 
-Related: gt notify - for fine-grained notification level control`,
+Related: gt notify - for fine-grained notification level control
+
+Examples:
+  gt dnd            # Toggle DND on/off
+  gt dnd on         # Enable DND (mute notifications)
+  gt dnd off        # Disable DND (resume notifications)
+  gt dnd status     # Show current notification level`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runDnd,
 }

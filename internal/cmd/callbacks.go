@@ -7,11 +7,12 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
-	"github.com/cursorworkshop/cursor-gastown/internal/mail"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/townlog"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/mail"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/townlog"
+	"github.com/harness-institute/cursor-gastown/internal/witness"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // Callback message subject patterns for routing.
@@ -150,12 +151,12 @@ func runCallbacksProcess(cmd *cobra.Command, args []string) error {
 		// Print result
 		if result.Error != nil {
 			fmt.Printf("  %s %s: %v\n",
-				style.Error.Render("[X]"),
+				style.Error.Render("✗"),
 				msg.Subject,
 				result.Error)
 		} else if result.Handled {
 			fmt.Printf("  %s [%s] %s\n",
-				style.Bold.Render("OK"),
+				style.Bold.Render("✓"),
 				result.CallbackType,
 				result.Action)
 		} else {
@@ -189,7 +190,7 @@ func runCallbacksProcess(cmd *cobra.Command, args []string) error {
 			style.Dim.Render("○"), handled, len(results))
 	} else {
 		fmt.Printf("%s Processed %d/%d callbacks",
-			style.Bold.Render("OK"), handled, len(results))
+			style.Bold.Render("✓"), handled, len(results))
 		if errors > 0 {
 			fmt.Printf(" (%d errors)", errors)
 		}
@@ -274,12 +275,12 @@ func classifyCallback(subject string) CallbackType {
 
 // handlePolecatDone processes a POLECAT_DONE callback.
 // These come from Witnesses forwarding polecat completion notices.
-func handlePolecatDone(townRoot string, msg *mail.Message, dryRun bool) (string, error) { //nolint:unparam // error return kept for consistency with callback interface
+func handlePolecatDone(townRoot string, msg *mail.Message, dryRun bool) (string, error) {
 	matches := patternPolecatDone.FindStringSubmatch(msg.Subject)
-	polecatName := ""
-	if len(matches) > 1 {
-		polecatName = matches[1]
+	if len(matches) < 2 {
+		return "", fmt.Errorf("could not parse polecat name from subject: %q", msg.Subject)
 	}
+	polecatName := matches[1]
 
 	// Extract info from body
 	var exitType, issueID string
@@ -306,12 +307,12 @@ func handlePolecatDone(townRoot string, msg *mail.Message, dryRun bool) (string,
 }
 
 // handleMergeCompleted processes a merge completion callback from Refinery.
-func handleMergeCompleted(townRoot string, msg *mail.Message, dryRun bool) (string, error) { //nolint:unparam // error return kept for consistency with callback interface
+func handleMergeCompleted(townRoot string, msg *mail.Message, dryRun bool) (string, error) {
 	matches := patternMergeCompleted.FindStringSubmatch(msg.Subject)
-	branch := ""
-	if len(matches) > 1 {
-		branch = matches[1]
+	if len(matches) < 2 {
+		return "", fmt.Errorf("could not parse branch from subject: %q", msg.Subject)
 	}
+	branch := matches[1]
 
 	// Extract MR ID and source issue from body
 	var mrID, sourceIssue, mergeCommit string
@@ -353,12 +354,12 @@ func handleMergeCompleted(townRoot string, msg *mail.Message, dryRun bool) (stri
 }
 
 // handleMergeRejected processes a merge rejection callback from Refinery.
-func handleMergeRejected(townRoot string, msg *mail.Message, dryRun bool) (string, error) { //nolint:unparam // error return kept for consistency with callback interface
+func handleMergeRejected(townRoot string, msg *mail.Message, dryRun bool) (string, error) {
 	matches := patternMergeRejected.FindStringSubmatch(msg.Subject)
-	branch := ""
-	if len(matches) > 1 {
-		branch = matches[1]
+	if len(matches) < 2 {
+		return "", fmt.Errorf("could not parse branch from subject: %q", msg.Subject)
 	}
+	branch := matches[1]
 
 	// Extract reason from body
 	var reason string
@@ -384,43 +385,63 @@ func handleMergeRejected(townRoot string, msg *mail.Message, dryRun bool) (strin
 }
 
 // handleHelp processes a HELP: request from a polecat.
+// Assesses category and severity to determine priority and routing.
 func handleHelp(townRoot string, msg *mail.Message, dryRun bool) (string, error) {
-	matches := patternHelp.FindStringSubmatch(msg.Subject)
-	topic := ""
-	if len(matches) > 1 {
-		topic = matches[1]
+	// Parse the help payload for structured assessment
+	payload, err := witness.ParseHelp(msg.Subject, msg.Body)
+	if err != nil {
+		return "", fmt.Errorf("could not parse help request: %w", err)
 	}
+
+	// Assess category and severity from content
+	assessment := witness.AssessHelp(payload)
 
 	if dryRun {
-		return fmt.Sprintf("would forward help request to overseer: %s", topic), nil
+		return fmt.Sprintf("would forward help request to overseer: %s [%s/%s]",
+			payload.Topic, assessment.Category, assessment.Severity), nil
 	}
 
-	// Forward to overseer (human)
+	// Map assessed severity to mail priority
+	var priority mail.Priority
+	switch assessment.Severity {
+	case witness.HelpSeverityCritical:
+		priority = mail.PriorityUrgent
+	case witness.HelpSeverityHigh:
+		priority = mail.PriorityHigh
+	default:
+		priority = mail.PriorityNormal
+	}
+
+	// Forward to overseer (human) with assessed priority
 	router := mail.NewRouter(townRoot)
+	defer router.WaitPendingNotifications()
 	fwd := &mail.Message{
-		From:     "mayor/",
-		To:       "overseer",
-		Subject:  fmt.Sprintf("[FWD] HELP: %s", topic),
-		Body:     fmt.Sprintf("Forwarded from: %s\n\n%s", msg.From, msg.Body),
-		Priority: mail.PriorityHigh,
+		From:    "mayor/",
+		To:      "overseer",
+		Subject: fmt.Sprintf("[FWD][%s] HELP: %s", strings.ToUpper(string(assessment.Severity)), payload.Topic),
+		Body: fmt.Sprintf("Forwarded from: %s\nAssessment: category=%s severity=%s (suggest → %s)\nRationale: %s\n\n%s",
+			msg.From, assessment.Category, assessment.Severity, assessment.SuggestTo, assessment.Rationale, msg.Body),
+		Priority: priority,
 	}
 	if err := router.Send(fwd); err != nil {
 		return "", fmt.Errorf("forwarding to overseer: %w", err)
 	}
 
-	// Log the help request
-	logCallback(townRoot, fmt.Sprintf("help_request: from %s: %s", msg.From, topic))
+	// Log the help request with assessment
+	logCallback(townRoot, fmt.Sprintf("help_request: from %s: %s [%s/%s]",
+		msg.From, payload.Topic, assessment.Category, assessment.Severity))
 
-	return fmt.Sprintf("forwarded help request to overseer: %s", topic), nil
+	return fmt.Sprintf("forwarded help request to overseer: %s [%s/%s]",
+		payload.Topic, assessment.Category, assessment.Severity), nil
 }
 
 // handleEscalation processes an ESCALATION: from a Witness.
 func handleEscalation(townRoot string, msg *mail.Message, dryRun bool) (string, error) {
 	matches := patternEscalation.FindStringSubmatch(msg.Subject)
-	topic := ""
-	if len(matches) > 1 {
-		topic = matches[1]
+	if len(matches) < 2 {
+		return "", fmt.Errorf("could not parse topic from subject: %q", msg.Subject)
 	}
+	topic := matches[1]
 
 	if dryRun {
 		return fmt.Sprintf("would forward escalation to overseer: %s", topic), nil
@@ -428,6 +449,7 @@ func handleEscalation(townRoot string, msg *mail.Message, dryRun bool) (string, 
 
 	// Forward to overseer with urgent priority
 	router := mail.NewRouter(townRoot)
+	defer router.WaitPendingNotifications()
 	fwd := &mail.Message{
 		From:     "mayor/",
 		To:       "overseer",
@@ -448,10 +470,10 @@ func handleEscalation(townRoot string, msg *mail.Message, dryRun bool) (string, 
 // handleSling processes a SLING_REQUEST to spawn work on a polecat.
 func handleSling(townRoot string, msg *mail.Message, dryRun bool) (string, error) {
 	matches := patternSling.FindStringSubmatch(msg.Subject)
-	beadID := ""
-	if len(matches) > 1 {
-		beadID = matches[1]
+	if len(matches) < 2 {
+		return "", fmt.Errorf("could not parse bead ID from subject: %q", msg.Subject)
 	}
+	beadID := matches[1]
 
 	// Extract rig from body
 	var targetRig string

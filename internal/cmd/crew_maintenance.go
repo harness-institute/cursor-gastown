@@ -2,13 +2,14 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/crew"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/crew"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 func runCrewRename(cmd *cobra.Command, args []string) error {
@@ -23,16 +24,17 @@ func runCrewRename(cmd *cobra.Command, args []string) error {
 	}
 	// Note: newName is just the new name, no rig prefix expected
 
-	crewMgr, r, err := getCrewManager(crewRig)
+	crewMgr, r, err := getCrewManagerForMember(crewRig, oldName)
 	if err != nil {
 		return err
 	}
 
-	// Kill any running session for the old name
+	// Kill any running session for the old name.
+	// Use KillSessionWithProcesses to ensure all descendant processes are killed.
 	t := tmux.NewTmux()
 	oldSessionID := crewSessionName(r.Name, oldName)
 	if hasSession, _ := t.HasSession(oldSessionID); hasSession {
-		if err := t.KillSession(oldSessionID); err != nil {
+		if err := t.KillSessionWithProcesses(oldSessionID); err != nil {
 			return fmt.Errorf("killing old session: %w", err)
 		}
 		fmt.Printf("Killed session %s\n", oldSessionID)
@@ -40,6 +42,9 @@ func runCrewRename(cmd *cobra.Command, args []string) error {
 
 	// Perform the rename
 	if err := crewMgr.Rename(oldName, newName); err != nil {
+		if errors.Is(err, crew.ErrInvalidCrewName) {
+			return fmt.Errorf("invalid new name '%s': %w", newName, err)
+		}
 		if err == crew.ErrCrewNotFound {
 			return fmt.Errorf("crew workspace '%s' not found", oldName)
 		}
@@ -50,7 +55,7 @@ func runCrewRename(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("%s Renamed crew workspace: %s/%s → %s/%s\n",
-		style.Bold.Render("OK"), r.Name, oldName, r.Name, newName)
+		style.Bold.Render("✓"), r.Name, oldName, r.Name, newName)
 	fmt.Printf("New session will be: %s\n", style.Dim.Render(crewSessionName(r.Name, newName)))
 
 	return nil
@@ -113,19 +118,13 @@ func runCrewPristine(cmd *cobra.Command, args []string) error {
 		fmt.Printf("%s %s/%s\n", style.Bold.Render("→"), r.Name, result.Name)
 
 		if result.HadChanges {
-			fmt.Printf("  %s\n", style.Bold.Render("WARN Has uncommitted changes"))
+			fmt.Printf("  %s\n", style.Bold.Render("⚠ Has uncommitted changes"))
 		}
 
 		if result.Pulled {
-			fmt.Printf("  %s git pull\n", style.Dim.Render("OK"))
+			fmt.Printf("  %s git pull\n", style.Dim.Render("✓"))
 		} else if result.PullError != "" {
-			fmt.Printf("  %s git pull: %s\n", style.Bold.Render("[X]"), result.PullError)
-		}
-
-		if result.Synced {
-			fmt.Printf("  %s bd sync\n", style.Dim.Render("OK"))
-		} else if result.SyncError != "" {
-			fmt.Printf("  %s bd sync: %s\n", style.Bold.Render("[X]"), result.SyncError)
+			fmt.Printf("  %s git pull: %s\n", style.Bold.Render("✗"), result.PullError)
 		}
 	}
 

@@ -8,13 +8,17 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/harness-institute/cursor-gastown/internal/config"
 )
 
 // Default parameters for stuck-session detection.
+// These are fallbacks when no config override exists.
+// Configurable via operational.deacon in settings/config.json.
 const (
-	DefaultPingTimeout        = 30 * time.Second // How long to wait for response
-	DefaultConsecutiveFailures = 3               // Failures before force-kill
-	DefaultCooldown           = 5 * time.Minute  // Minimum time between force-kills
+	DefaultPingTimeout         = 30 * time.Second // How long to wait for response
+	DefaultConsecutiveFailures = 3                // Failures before force-kill
+	DefaultCooldown            = 5 * time.Minute  // Minimum time between force-kills
 )
 
 // StuckConfig holds configurable parameters for stuck-session detection.
@@ -30,6 +34,19 @@ func DefaultStuckConfig() *StuckConfig {
 		PingTimeout:         DefaultPingTimeout,
 		ConsecutiveFailures: DefaultConsecutiveFailures,
 		Cooldown:            DefaultCooldown,
+	}
+}
+
+// LoadStuckConfig loads stuck detection config from town settings, falling
+// back to compiled-in defaults. The townRoot parameter is used to locate
+// the settings/config.json file.
+func LoadStuckConfig(townRoot string) *StuckConfig {
+	opCfg := config.LoadOperationalConfig(townRoot)
+	deaconCfg := opCfg.GetDeaconConfig()
+	return &StuckConfig{
+		PingTimeout:         deaconCfg.PingTimeoutD(),
+		ConsecutiveFailures: deaconCfg.ConsecutiveFailuresV(),
+		Cooldown:            deaconCfg.CooldownD(),
 	}
 }
 

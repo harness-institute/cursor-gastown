@@ -4,13 +4,31 @@ package tmux
 import (
 	"fmt"
 	"hash/fnv"
+	"strconv"
+	"strings"
 )
 
-// Theme represents a tmux status bar color scheme.
+// WindowStyle represents window background colors (tmux window-style).
+type WindowStyle struct {
+	BG string // Background color (hex or tmux color name)
+	FG string // Foreground color (hex or tmux color name)
+}
+
+// Style returns the tmux window-style string.
+func (w WindowStyle) Style() string {
+	return fmt.Sprintf("bg=%s,fg=%s", w.BG, w.FG)
+}
+
+// Theme represents a tmux color scheme for status bar and optional window background.
 type Theme struct {
 	Name string // Human-readable name
 	BG   string // Background color (hex or tmux color name)
 	FG   string // Foreground color (hex or tmux color name)
+
+	// Window is the optional window background style (tmux window-style).
+	// nil = disabled (window uses terminal defaults).
+	// If set, its BG/FG are applied as the window background.
+	Window *WindowStyle `json:"window,omitempty"`
 }
 
 // DefaultPalette is the curated set of distinct, professional color themes.
@@ -29,15 +47,22 @@ var DefaultPalette = []Theme{
 }
 
 // MayorTheme returns the special theme for the Mayor session.
-// Gold/dark to distinguish it from rig themes.
+// Uses "default" to inherit the user's terminal colors — the Mayor
+// session is the primary interactive session, so it should blend in.
 func MayorTheme() Theme {
-	return Theme{Name: "mayor", BG: "#3d3200", FG: "#ffd700"}
+	return Theme{Name: "mayor", BG: "default", FG: "default"}
 }
 
 // DeaconTheme returns the special theme for the Deacon session.
 // Purple/silver - ecclesiastical, distinct from Mayor's gold.
 func DeaconTheme() Theme {
 	return Theme{Name: "deacon", BG: "#2d1f3d", FG: "#c0b0d0"}
+}
+
+// DogTheme returns the theme for Dog sessions.
+// Brown/tan - earthy, loyal worker aesthetic.
+func DogTheme() Theme {
+	return Theme{Name: "dog", BG: "#3d2f1f", FG: "#d0c0a0"}
 }
 
 // GetThemeByName finds a theme by name from the default palette.
@@ -71,6 +96,26 @@ func AssignThemeFromPalette(rigName string, palette []Theme) Theme {
 // Style returns the tmux status-style string for this theme.
 func (t Theme) Style() string {
 	return fmt.Sprintf("bg=%s,fg=%s", t.BG, t.FG)
+}
+
+// DarkenColor reduces a hex color's brightness by the given factor (0.0–1.0).
+// A factor of 0.4 means 40% of original brightness. Non-hex colors (e.g.,
+// "default") are returned unchanged.
+func DarkenColor(hex string, factor float64) string {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) != 6 {
+		return "#" + hex // Not a standard hex color, return as-is.
+	}
+	r, err1 := strconv.ParseUint(hex[0:2], 16, 8)
+	g, err2 := strconv.ParseUint(hex[2:4], 16, 8)
+	b, err3 := strconv.ParseUint(hex[4:6], 16, 8)
+	if err1 != nil || err2 != nil || err3 != nil {
+		return "#" + hex
+	}
+	dr := uint8(float64(r) * factor)
+	dg := uint8(float64(g) * factor)
+	db := uint8(float64(b) * factor)
+	return fmt.Sprintf("#%02x%02x%02x", dr, dg, db)
 }
 
 // ListThemeNames returns the names of all themes in the default palette.

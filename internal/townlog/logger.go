@@ -27,6 +27,9 @@ const (
 	EventCrash EventType = "crash"
 	// EventKill indicates an agent was killed intentionally.
 	EventKill EventType = "kill"
+	// EventHandoffNoPersist indicates a handoff failed to persist to Dolt.
+	// Distinct from EventHandoff so crash recovery can identify false handoffs.
+	EventHandoffNoPersist EventType = "handoff-NOPERSIST"
 	// EventCallback indicates a callback was processed during patrol.
 	EventCallback EventType = "callback"
 
@@ -36,6 +39,10 @@ const (
 	EventPolecatNudged  EventType = "polecat_nudged"
 	EventEscalationSent EventType = "escalation_sent"
 	EventPatrolComplete EventType = "patrol_complete"
+
+	// Session death events (for crash investigation)
+	EventSessionDeath EventType = "session_death" // Session terminated (with reason)
+	EventMassDeath    EventType = "mass_death"    // Multiple sessions died in short window
 )
 
 // Event represents a single agent lifecycle event.
@@ -134,6 +141,11 @@ func formatLogLine(e Event) string {
 		if e.Context != "" {
 			detail += fmt.Sprintf(" (%s)", e.Context)
 		}
+	case EventHandoffNoPersist:
+		detail = "handoff FAILED (Dolt persistence)"
+		if e.Context != "" {
+			detail += fmt.Sprintf(" (%s)", e.Context)
+		}
 	case EventDone:
 		if e.Context != "" {
 			detail = fmt.Sprintf("completed %s", e.Context)
@@ -187,6 +199,18 @@ func formatLogLine(e Event) string {
 			detail = fmt.Sprintf("patrol complete (%s)", e.Context)
 		} else {
 			detail = "patrol complete"
+		}
+	case EventSessionDeath:
+		if e.Context != "" {
+			detail = fmt.Sprintf("session terminated (%s)", e.Context)
+		} else {
+			detail = "session terminated"
+		}
+	case EventMassDeath:
+		if e.Context != "" {
+			detail = fmt.Sprintf("MASS SESSION DEATH (%s)", e.Context)
+		} else {
+			detail = "MASS SESSION DEATH"
 		}
 	default:
 		detail = string(e.Type)

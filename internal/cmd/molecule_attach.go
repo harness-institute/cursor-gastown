@@ -6,30 +6,13 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 func runMoleculeAttach(cmd *cobra.Command, args []string) error {
 	var pinnedBeadID, moleculeID string
-
-	if len(args) == 2 {
-		// Explicit: gt mol attach <pinned-bead-id> <molecule-id>
-		pinnedBeadID = args[0]
-		moleculeID = args[1]
-	} else {
-		// Auto-detect: gt mol attach <molecule-id>
-		moleculeID = args[0]
-		var err error
-		pinnedBeadID, err = detectAgentBeadID()
-		if err != nil {
-			return fmt.Errorf("auto-detecting agent: %w", err)
-		}
-		if pinnedBeadID == "" {
-			return fmt.Errorf("could not detect agent from current directory - provide explicit pinned bead ID")
-		}
-	}
 
 	workDir, err := findLocalBeadsDir()
 	if err != nil {
@@ -38,6 +21,56 @@ func runMoleculeAttach(cmd *cobra.Command, args []string) error {
 
 	b := beads.New(workDir)
 
+	if len(args) == 2 {
+		// Explicit: gt mol attach <pinned-bead-id> <molecule-id>
+		pinnedBeadID = args[0]
+		moleculeID = args[1]
+	} else {
+		// Auto-detect: gt mol attach <molecule-id>
+		// Find the agent's pinned handoff bead (same pattern as mol burn/squash)
+		moleculeID = args[0]
+
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getting current directory: %w", err)
+		}
+
+		townRoot, err := workspace.FindFromCwd()
+		if err != nil {
+			return fmt.Errorf("finding workspace: %w", err)
+		}
+		if townRoot == "" {
+			return fmt.Errorf("not in a Gas Town workspace")
+		}
+
+		roleInfo, err := GetRoleWithContext(cwd, townRoot)
+		if err != nil {
+			return fmt.Errorf("detecting role: %w", err)
+		}
+		roleCtx := RoleContext{
+			Role:     roleInfo.Role,
+			Rig:      roleInfo.Rig,
+			Polecat:  roleInfo.Polecat,
+			TownRoot: townRoot,
+			WorkDir:  cwd,
+		}
+		target := buildAgentIdentity(roleCtx)
+		if target == "" {
+			return fmt.Errorf("cannot determine agent identity (role: %s)", roleCtx.Role)
+		}
+
+		role := extractRoleFromIdentity(target)
+
+		handoff, err := b.FindHandoffBead(role)
+		if err != nil {
+			return fmt.Errorf("finding handoff bead: %w", err)
+		}
+		if handoff == nil {
+			return fmt.Errorf("no handoff bead found for %s (looked for %q with pinned status)", target, beads.HandoffBeadTitle(role))
+		}
+		pinnedBeadID = handoff.ID
+	}
+
 	// Attach the molecule
 	issue, err := b.AttachMolecule(pinnedBeadID, moleculeID)
 	if err != nil {
@@ -45,54 +78,12 @@ func runMoleculeAttach(cmd *cobra.Command, args []string) error {
 	}
 
 	attachment := beads.ParseAttachmentFields(issue)
-	fmt.Printf("%s Attached %s to %s\n", style.Bold.Render("OK"), moleculeID, pinnedBeadID)
+	fmt.Printf("%s Attached %s to %s\n", style.Bold.Render("✓"), moleculeID, pinnedBeadID)
 	if attachment != nil && attachment.AttachedAt != "" {
 		fmt.Printf("  attached_at: %s\n", attachment.AttachedAt)
 	}
 
 	return nil
-}
-
-// detectAgentBeadID detects the current agent's bead ID from the working directory.
-// Returns the agent bead ID (e.g., "hq-mayor", "gt-gastown-polecat-nux") or empty string if not detectable.
-func detectAgentBeadID() (string, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("getting current directory: %w", err)
-	}
-
-	townRoot, err := workspace.FindFromCwd()
-	if err != nil {
-		return "", fmt.Errorf("finding workspace: %w", err)
-	}
-	if townRoot == "" {
-		return "", fmt.Errorf("not in a Gas Town workspace")
-	}
-
-	roleInfo, err := GetRoleWithContext(cwd, townRoot)
-	if err != nil {
-		return "", fmt.Errorf("detecting role: %w", err)
-	}
-
-	roleCtx := RoleContext{
-		Role:     roleInfo.Role,
-		Rig:      roleInfo.Rig,
-		Polecat:  roleInfo.Polecat,
-		TownRoot: townRoot,
-		WorkDir:  cwd,
-	}
-
-	identity := buildAgentIdentity(roleCtx)
-	if identity == "" {
-		return "", fmt.Errorf("cannot determine agent identity (role: %s)", roleCtx.Role)
-	}
-
-	beadID := buildAgentBeadID(identity, roleCtx.Role, townRoot)
-	if beadID == "" {
-		return "", fmt.Errorf("cannot build agent bead ID for identity: %s", identity)
-	}
-
-	return beadID, nil
 }
 
 func runMoleculeDetach(cmd *cobra.Command, args []string) error {
@@ -127,7 +118,7 @@ func runMoleculeDetach(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("detaching molecule: %w", err)
 	}
 
-	fmt.Printf("%s Detached %s from %s\n", style.Bold.Render("OK"), previousMolecule, pinnedBeadID)
+	fmt.Printf("%s Detached %s from %s\n", style.Bold.Render("✓"), previousMolecule, pinnedBeadID)
 
 	return nil
 }

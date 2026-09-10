@@ -3,26 +3,44 @@ package doctor
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/boot"
+	"github.com/harness-institute/cursor-gastown/internal/boot"
+	"github.com/harness-institute/cursor-gastown/internal/session"
 )
 
 // BootHealthCheck verifies Boot watchdog health.
 // "The vet checks on the dog."
 type BootHealthCheck struct {
-	BaseCheck
+	FixableCheck
+	missingDir bool // track if directory is missing for Fix()
 }
 
 // NewBootHealthCheck creates a new Boot health check.
 func NewBootHealthCheck() *BootHealthCheck {
 	return &BootHealthCheck{
-		BaseCheck: BaseCheck{
-			CheckName:        "boot-health",
-			CheckDescription: "Check Boot watchdog health (the vet checks on the dog)",
+		FixableCheck: FixableCheck{
+			BaseCheck: BaseCheck{
+				CheckName:        "boot-health",
+				CheckDescription: "Check Boot watchdog health (the vet checks on the dog)",
+				CheckCategory:    CategoryInfrastructure,
+			},
 		},
 	}
+}
+
+// CanFix returns true only if the directory is missing (we can create it).
+func (c *BootHealthCheck) CanFix() bool {
+	return c.missingDir
+}
+
+// Fix creates the missing boot directory.
+func (c *BootHealthCheck) Fix(ctx *CheckContext) error {
+	if !c.missingDir {
+		return nil
+	}
+	b := boot.New(ctx.TownRoot)
+	return b.EnsureDir()
 }
 
 // Run checks Boot health: directory, session, status, and marker freshness.
@@ -33,21 +51,22 @@ func (c *BootHealthCheck) Run(ctx *CheckContext) *CheckResult {
 	// Check 1: Boot directory exists
 	bootDir := b.Dir()
 	if _, err := os.Stat(bootDir); os.IsNotExist(err) {
+		c.missingDir = true
 		return &CheckResult{
 			Name:    c.Name(),
 			Status:  StatusWarning,
 			Message: "Boot directory not present",
 			Details: []string{fmt.Sprintf("Expected: %s", bootDir)},
-			FixHint: "Boot directory is created on first daemon run",
+			FixHint: "Run 'gt doctor --fix' to create it",
 		}
 	}
 
 	// Check 2: Session alive
 	sessionAlive := b.IsSessionAlive()
 	if sessionAlive {
-		details = append(details, fmt.Sprintf("Session: %s (alive)", boot.SessionName))
+		details = append(details, fmt.Sprintf("Session: %s (alive)", session.BootSessionName()))
 	} else {
-		details = append(details, fmt.Sprintf("Session: %s (not running)", boot.SessionName))
+		details = append(details, fmt.Sprintf("Session: %s (not running)", session.BootSessionName()))
 	}
 
 	// Check 3: Last execution status
@@ -84,24 +103,9 @@ func (c *BootHealthCheck) Run(ctx *CheckContext) *CheckResult {
 		details = append(details, "No previous run recorded")
 	}
 
-	// Check 4: Marker file freshness (stale marker indicates crash)
-	markerPath := filepath.Join(bootDir, boot.MarkerFileName)
-	if info, err := os.Stat(markerPath); err == nil {
-		age := time.Since(info.ModTime())
-		if age > boot.DefaultMarkerTTL {
-			return &CheckResult{
-				Name:    c.Name(),
-				Status:  StatusWarning,
-				Message: "Boot marker is stale (possible crash)",
-				Details: []string{
-					fmt.Sprintf("Marker age: %s", age.Round(time.Second)),
-					fmt.Sprintf("TTL: %s", boot.DefaultMarkerTTL),
-				},
-				FixHint: "Stale marker will be cleaned on next daemon tick",
-			}
-		}
-		// Marker exists and is fresh - Boot is currently running
-		details = append(details, fmt.Sprintf("Currently running (marker age: %s)", age.Round(time.Second)))
+	// Check 4: Currently running (uses tmux session state per ZFC principle)
+	if sessionAlive {
+		details = append(details, "Currently running (tmux session active)")
 	}
 
 	// All checks passed

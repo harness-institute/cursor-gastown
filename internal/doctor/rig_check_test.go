@@ -3,9 +3,109 @@ package doctor
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func installMockBdInitOnly(t *testing.T) {
+	t.Helper()
+
+	binDir := t.TempDir()
+	if runtime.GOOS == "windows" {
+		psPath := filepath.Join(binDir, "bd.ps1")
+		psScript := `$target = Join-Path (Get-Location) '.beads'
+foreach ($arg in $args) {
+  if ($arg -eq 'init') {
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Set-Content -Path (Join-Path $target 'config.yaml') -Value @('prefix: tr', 'issue-prefix: tr-')
+    exit 0
+  }
+}
+exit 0
+`
+		cmdScript := "@echo off\r\npwsh -NoProfile -NoLogo -File \"" + psPath + "\" %*\r\n"
+		if err := os.WriteFile(psPath, []byte(psScript), 0644); err != nil {
+			t.Fatalf("write mock bd ps1: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(binDir, "bd.cmd"), []byte(cmdScript), 0644); err != nil {
+			t.Fatalf("write mock bd cmd: %v", err)
+		}
+	} else {
+		script := `#!/bin/sh
+	if [ -n "$BD_ARGS_LOG" ]; then
+	  printf 'args=%s env=%s beads=%s db=%s\n' "$*" "${BEADS_DOLT_SERVER_DATABASE:-<unset>}" "${BEADS_DIR:-<unset>}" "${BEADS_DB:-<unset>}" >> "$BD_ARGS_LOG"
+	fi
+	target="$(pwd)/.beads"
+	mkdir -p "$target"
+	printf 'prefix: tr\nissue-prefix: tr-\n' > "$target/config.yaml"
+exit 0
+`
+		if err := os.WriteFile(filepath.Join(binDir, "bd"), []byte(script), 0755); err != nil {
+			t.Fatalf("write mock bd: %v", err)
+		}
+	}
+
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func TestBeadsRedirectCheck_FixInitBeadsUsesCanonicalDatabase(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mock bd arg logging is shell-specific")
+	}
+	installMockBdInitOnly(t)
+
+	tmpDir := t.TempDir()
+	rigName := "testrig"
+	rigDir := filepath.Join(tmpDir, rigName)
+	if err := os.MkdirAll(rigDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	mayorDir := filepath.Join(tmpDir, "mayor")
+	if err := os.MkdirAll(mayorDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	rigsJSON := `{
+		"version": 1,
+		"rigs": {
+			"testrig": {
+				"git_url": "https://example.com/test.git",
+				"beads": {"prefix": "tr"}
+			}
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(mayorDir, "rigs.json"), []byte(rigsJSON), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	argsLog := filepath.Join(t.TempDir(), "bd-args.log")
+	t.Setenv("BD_ARGS_LOG", argsLog)
+	t.Setenv("BEADS_DIR", filepath.Join(tmpDir, "wrong", ".beads"))
+	t.Setenv("BEADS_DB", filepath.Join(tmpDir, "wrong.db"))
+	t.Setenv("BEADS_DOLT_SERVER_DATABASE", "wrong_db")
+
+	check := NewBeadsRedirectCheck()
+	ctx := &CheckContext{TownRoot: tmpDir, RigName: rigName}
+	if err := check.Fix(ctx); err != nil {
+		t.Fatalf("Fix failed: %v", err)
+	}
+
+	logData, err := os.ReadFile(argsLog)
+	if err != nil {
+		t.Fatalf("reading bd args log: %v", err)
+	}
+	log := string(logData)
+	if !strings.Contains(log, "args=init --prefix tr --database testrig --server --server-port") {
+		t.Fatalf("bd init did not use canonical rig database; log:\n%s", log)
+	}
+	if !strings.Contains(log, "env=testrig") || !strings.Contains(log, "beads="+filepath.Join(rigDir, ".beads")) {
+		t.Fatalf("bd init did not receive canonical env; log:\n%s", log)
+	}
+	if strings.Contains(log, "wrong_db") || strings.Contains(log, "wrong.db") || strings.Contains(log, filepath.Join(tmpDir, "wrong", ".beads")) {
+		t.Fatalf("stale BEADS env leaked into bd subprocess; log:\n%s", log)
+	}
+}
 
 func TestNewBeadsRedirectCheck(t *testing.T) {
 	check := NewBeadsRedirectCheck()
@@ -291,6 +391,8 @@ func TestBeadsRedirectCheck_FixNoOp_LocalBeads(t *testing.T) {
 }
 
 func TestBeadsRedirectCheck_FixInitBeads(t *testing.T) {
+	installMockBdInitOnly(t)
+
 	tmpDir := t.TempDir()
 	rigName := "testrig"
 	rigDir := filepath.Join(tmpDir, rigName)
@@ -395,17 +497,92 @@ func TestBeadsRedirectCheck_ConflictingLocalBeads(t *testing.T) {
 	}
 }
 
+func TestDefaultBranchExistsCheck_NoRig(t *testing.T) {
+	check := NewDefaultBranchExistsCheck()
+	ctx := &CheckContext{TownRoot: t.TempDir(), RigName: ""}
+
+	result := check.Run(ctx)
+	if result.Status != StatusError {
+		t.Errorf("expected StatusError with no rig, got %v", result.Status)
+	}
+}
+
+func TestDefaultBranchExistsCheck_NoConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	rigName := "testrig"
+	rigDir := filepath.Join(tmpDir, rigName)
+	if err := os.MkdirAll(rigDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	check := NewDefaultBranchExistsCheck()
+	ctx := &CheckContext{TownRoot: tmpDir, RigName: rigName}
+
+	result := check.Run(ctx)
+	if result.Status != StatusWarning {
+		t.Errorf("expected StatusWarning with no config, got %v", result.Status)
+	}
+}
+
+func TestDefaultBranchExistsCheck_EmptyDefaultBranch(t *testing.T) {
+	tmpDir := t.TempDir()
+	rigName := "testrig"
+	rigDir := filepath.Join(tmpDir, rigName)
+	if err := os.MkdirAll(rigDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Write config with no default_branch
+	if err := os.WriteFile(filepath.Join(rigDir, "config.json"), []byte(`{"name":"testrig"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	check := NewDefaultBranchExistsCheck()
+	ctx := &CheckContext{TownRoot: tmpDir, RigName: rigName}
+
+	result := check.Run(ctx)
+	if result.Status != StatusOK {
+		t.Errorf("expected StatusOK with no default_branch, got %v", result.Status)
+	}
+}
+
+func TestDefaultBranchExistsCheck_NoBareRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+	rigName := "testrig"
+	rigDir := filepath.Join(tmpDir, rigName)
+	if err := os.MkdirAll(rigDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rigDir, "config.json"), []byte(`{"default_branch":"main"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	check := NewDefaultBranchExistsCheck()
+	ctx := &CheckContext{TownRoot: tmpDir, RigName: rigName}
+
+	result := check.Run(ctx)
+	if result.Status != StatusOK {
+		t.Errorf("expected StatusOK when no bare repo, got %v", result.Status)
+	}
+}
+
+func TestDefaultBranchExistsCheck_NotFixable(t *testing.T) {
+	check := NewDefaultBranchExistsCheck()
+	if check.CanFix() {
+		t.Error("DefaultBranchExistsCheck should not be fixable")
+	}
+}
+
 func TestBeadsRedirectCheck_FixConflictingLocalBeads(t *testing.T) {
 	tmpDir := t.TempDir()
 	rigName := "testrig"
 	rigDir := filepath.Join(tmpDir, rigName)
 
-	// Create tracked beads at mayor/rig/.beads
+	// Create tracked beads at mayor/rig/.beads with config.yaml as data marker
 	trackedBeads := filepath.Join(rigDir, "mayor", "rig", ".beads")
 	if err := os.MkdirAll(trackedBeads, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(trackedBeads, "issues.jsonl"), []byte(`{"id":"tr-1"}`), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(trackedBeads, "config.yaml"), []byte("prefix: tr\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -414,7 +591,7 @@ func TestBeadsRedirectCheck_FixConflictingLocalBeads(t *testing.T) {
 	if err := os.MkdirAll(localBeads, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(localBeads, "issues.jsonl"), []byte(`{"id":"local-1"}`), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(localBeads, "config.yaml"), []byte("prefix: local\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -430,11 +607,6 @@ func TestBeadsRedirectCheck_FixConflictingLocalBeads(t *testing.T) {
 	// Apply fix - should remove conflicting local beads and create redirect
 	if err := check.Fix(ctx); err != nil {
 		t.Fatalf("Fix failed: %v", err)
-	}
-
-	// Verify local issues.jsonl was removed
-	if _, err := os.Stat(filepath.Join(localBeads, "issues.jsonl")); !os.IsNotExist(err) {
-		t.Error("local issues.jsonl should have been removed")
 	}
 
 	// Verify redirect was created

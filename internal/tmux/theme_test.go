@@ -5,6 +5,7 @@ import (
 )
 
 func TestAssignTheme_Deterministic(t *testing.T) {
+	t.Parallel()
 	// Same rig name should always get same theme
 	theme1 := AssignTheme("gastown")
 	theme2 := AssignTheme("gastown")
@@ -15,6 +16,7 @@ func TestAssignTheme_Deterministic(t *testing.T) {
 }
 
 func TestAssignTheme_Distribution(t *testing.T) {
+	t.Parallel()
 	// Different rig names should (mostly) get different themes
 	// With 10 themes and good hashing, collisions should be rare
 	rigs := []string{"gastown", "beads", "myproject", "frontend", "backend", "api", "web", "mobile"}
@@ -32,6 +34,7 @@ func TestAssignTheme_Distribution(t *testing.T) {
 }
 
 func TestGetThemeByName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		want  bool
@@ -52,6 +55,7 @@ func TestGetThemeByName(t *testing.T) {
 }
 
 func TestThemeStyle(t *testing.T) {
+	t.Parallel()
 	theme := Theme{Name: "test", BG: "#1e3a5f", FG: "#e0e0e0"}
 	want := "bg=#1e3a5f,fg=#e0e0e0"
 	got := theme.Style()
@@ -62,6 +66,7 @@ func TestThemeStyle(t *testing.T) {
 }
 
 func TestMayorTheme(t *testing.T) {
+	t.Parallel()
 	theme := MayorTheme()
 
 	if theme.Name != "mayor" {
@@ -75,6 +80,7 @@ func TestMayorTheme(t *testing.T) {
 }
 
 func TestListThemeNames(t *testing.T) {
+	t.Parallel()
 	names := ListThemeNames()
 
 	if len(names) != len(DefaultPalette) {
@@ -95,6 +101,7 @@ func TestListThemeNames(t *testing.T) {
 }
 
 func TestDefaultPaletteHasDistinctColors(t *testing.T) {
+	t.Parallel()
 	// Ensure no duplicate colors in the palette
 	bgColors := make(map[string]string)
 	for _, theme := range DefaultPalette {
@@ -106,6 +113,7 @@ func TestDefaultPaletteHasDistinctColors(t *testing.T) {
 }
 
 func TestAssignThemeFromPalette_EmptyPalette(t *testing.T) {
+	t.Parallel()
 	// Empty palette should return first default theme
 	theme := AssignThemeFromPalette("test", []Theme{})
 	if theme.Name != DefaultPalette[0].Name {
@@ -113,7 +121,32 @@ func TestAssignThemeFromPalette_EmptyPalette(t *testing.T) {
 	}
 }
 
+func TestDarkenColor(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		hex    string
+		factor float64
+		want   string
+	}{
+		{"#ffffff", 0.5, "#7f7f7f"},
+		{"#0d5c63", 0.4, "#052427"},
+		{"#722f37", 0.4, "#2d1216"},
+		{"#1e3a5f", 0.4, "#0c1726"},
+		{"#000000", 0.4, "#000000"},
+		{"default", 0.4, "#default"}, // non-hex passthrough
+	}
+	for _, tt := range tests {
+		t.Run(tt.hex, func(t *testing.T) {
+			got := DarkenColor(tt.hex, tt.factor)
+			if got != tt.want {
+				t.Errorf("DarkenColor(%q, %.1f) = %q, want %q", tt.hex, tt.factor, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAssignThemeFromPalette_CustomPalette(t *testing.T) {
+	t.Parallel()
 	custom := []Theme{
 		{Name: "custom1", BG: "#111", FG: "#fff"},
 		{Name: "custom2", BG: "#222", FG: "#fff"},

@@ -1,7 +1,7 @@
 package doctor
 
 import (
-	"bufio"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,39 +10,39 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
-	"github.com/cursorworkshop/cursor-gastown/internal/config"
-	"github.com/cursorworkshop/cursor-gastown/internal/templates"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/formula"
+	"github.com/harness-institute/cursor-gastown/internal/plugin"
 )
 
-// PatrolMoleculesExistCheck verifies that patrol molecules exist for each rig.
+// PatrolMoleculesExistCheck verifies that patrol formulas are accessible.
+// Patrols use `bd mol wisp <formula-name>` to spawn workflows, so the formulas
+// must exist in the formula search path (.beads/formulas/, ~/.beads/formulas/, or $GT_ROOT/.beads/formulas/).
 type PatrolMoleculesExistCheck struct {
 	FixableCheck
-	missingMols map[string][]string // rig -> missing molecule titles
+	missingFormulas map[string][]string // rig -> missing formula names
 }
 
-// NewPatrolMoleculesExistCheck creates a new patrol molecules exist check.
+// NewPatrolMoleculesExistCheck creates a new patrol formulas exist check.
 func NewPatrolMoleculesExistCheck() *PatrolMoleculesExistCheck {
 	return &PatrolMoleculesExistCheck{
 		FixableCheck: FixableCheck{
 			BaseCheck: BaseCheck{
 				CheckName:        "patrol-molecules-exist",
-				CheckDescription: "Check if patrol molecules exist for each rig",
+				CheckDescription: "Check if patrol formulas are accessible",
+				CheckCategory:    CategoryPatrol,
 			},
 		},
 	}
 }
 
-// patrolMolecules are the required patrol molecule titles.
-var patrolMolecules = []string{
-	"Deacon Patrol",
-	"Witness Patrol",
-	"Refinery Patrol",
-}
+// patrolFormulas are the required patrol formula names.
+var patrolFormulas = constants.PatrolFormulas()
 
-// Run checks if patrol molecules exist.
+// Run checks if patrol formulas are accessible.
 func (c *PatrolMoleculesExistCheck) Run(ctx *CheckContext) *CheckResult {
-	c.missingMols = make(map[string][]string)
+	c.missingFormulas = make(map[string][]string)
 
 	rigs, err := discoverRigs(ctx.TownRoot)
 	if err != nil {
@@ -65,9 +65,17 @@ func (c *PatrolMoleculesExistCheck) Run(ctx *CheckContext) *CheckResult {
 	var details []string
 	for _, rigName := range rigs {
 		rigPath := filepath.Join(ctx.TownRoot, rigName)
-		missing := c.checkPatrolMolecules(rigPath)
+		// If rigPath doesn't exist, fall back to TownRoot. This handles the case
+		// where gt doctor runs from a mayor's canonical clone, where TownRoot
+		// resolves to the clone itself (e.g. gastown/mayor/rig) rather than the
+		// actual town root. The rig directory won't be a subdirectory of the clone,
+		// but patrol formulas are town-level and accessible from TownRoot itself.
+		if _, statErr := os.Stat(rigPath); os.IsNotExist(statErr) {
+			rigPath = ctx.TownRoot
+		}
+		missing := c.checkPatrolFormulas(rigPath, ctx.TownRoot)
 		if len(missing) > 0 {
-			c.missingMols[rigName] = missing
+			c.missingFormulas[rigName] = missing
 			details = append(details, fmt.Sprintf("%s: missing %v", rigName, missing))
 		}
 	}
@@ -76,71 +84,75 @@ func (c *PatrolMoleculesExistCheck) Run(ctx *CheckContext) *CheckResult {
 		return &CheckResult{
 			Name:    c.Name(),
 			Status:  StatusWarning,
-			Message: fmt.Sprintf("%d rig(s) missing patrol molecules", len(c.missingMols)),
+			Message: fmt.Sprintf("%d rig(s) missing patrol formulas", len(c.missingFormulas)),
 			Details: details,
-			FixHint: "Run 'gt doctor --fix' to create missing patrol molecules",
+			FixHint: "Run 'gt doctor --fix' to provision embedded patrol formulas",
 		}
 	}
 
 	return &CheckResult{
 		Name:    c.Name(),
 		Status:  StatusOK,
-		Message: fmt.Sprintf("All %d rig(s) have patrol molecules", len(rigs)),
+		Message: fmt.Sprintf("All %d rig(s) have patrol formulas accessible", len(rigs)),
 	}
 }
 
-// checkPatrolMolecules returns missing patrol molecule titles for a rig.
-func (c *PatrolMoleculesExistCheck) checkPatrolMolecules(rigPath string) []string {
-	// List molecules using bd
-	cmd := exec.Command("bd", "list", "--type=molecule")
-	cmd.Dir = rigPath
-	output, err := cmd.Output()
-	if err != nil {
-		return patrolMolecules // Can't check, assume all missing
+// checkPatrolFormulas returns missing patrol formula names for a rig.
+func (c *PatrolMoleculesExistCheck) checkPatrolFormulas(rigPath string, townRoot string) []string {
+	// Check for formula files directly on the filesystem rather than shelling
+	// out to `bd formula list`, which may not be available in all environments
+	// (e.g., CI). Formulas are provisioned as .formula.toml files in .beads/formulas/.
+	//
+	// Search the full formula path: rig-level → town-level → user-level,
+	// matching the beads SDK's formula resolution order.
+	homeDir, _ := os.UserHomeDir()
+	searchDirs := []string{
+		filepath.Join(rigPath, ".beads", "formulas"),
+		filepath.Join(townRoot, ".beads", "formulas"),
+	}
+	if homeDir != "" {
+		searchDirs = append(searchDirs, filepath.Join(homeDir, ".beads", "formulas"))
 	}
 
-	outputStr := string(output)
 	var missing []string
-	for _, mol := range patrolMolecules {
-		if !strings.Contains(outputStr, mol) {
-			missing = append(missing, mol)
+	for _, formulaName := range patrolFormulas {
+		found := false
+		for _, dir := range searchDirs {
+			formulaPath := filepath.Join(dir, formulaName+".formula.toml")
+			if _, err := os.Stat(formulaPath); err == nil {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = append(missing, formulaName)
 		}
 	}
 	return missing
 }
 
-// Fix creates missing patrol molecules.
+// Fix provisions missing patrol formulas from the embedded formula templates.
+// Formulas are written to each rig's .beads/formulas/ directory.
 func (c *PatrolMoleculesExistCheck) Fix(ctx *CheckContext) error {
-	for rigName, missing := range c.missingMols {
+	if len(c.missingFormulas) == 0 {
+		return nil
+	}
+
+	var errs []string
+	for rigName := range c.missingFormulas {
 		rigPath := filepath.Join(ctx.TownRoot, rigName)
-		for _, mol := range missing {
-			desc := getPatrolMoleculeDesc(mol)
-			cmd := exec.Command("bd", "create", //nolint:gosec // G204: args are constructed internally
-				"--type=molecule",
-				"--title="+mol,
-				"--description="+desc,
-				"--priority=2",
-			)
-			cmd.Dir = rigPath
-			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("creating %s in %s: %w", mol, rigName, err)
-			}
+		if _, statErr := os.Stat(rigPath); os.IsNotExist(statErr) {
+			rigPath = ctx.TownRoot
+		}
+		if _, err := formula.ProvisionFormulas(rigPath); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", rigName, err))
 		}
 	}
-	return nil
-}
 
-func getPatrolMoleculeDesc(title string) string {
-	switch title {
-	case "Deacon Patrol":
-		return "Mayor's daemon patrol loop for handling callbacks, health checks, and cleanup."
-	case "Witness Patrol":
-		return "Per-rig worker monitor patrol loop with progressive nudging."
-	case "Refinery Patrol":
-		return "Merge queue processor patrol loop with verification gates."
-	default:
-		return "Patrol molecule"
+	if len(errs) > 0 {
+		return fmt.Errorf("partial fix: %s", strings.Join(errs, "; "))
 	}
+	return nil
 }
 
 // PatrolHooksWiredCheck verifies that hooks trigger patrol execution.
@@ -155,6 +167,7 @@ func NewPatrolHooksWiredCheck() *PatrolHooksWiredCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "patrol-hooks-wired",
 				CheckDescription: "Check if hooks trigger patrol execution",
+				CheckCategory:    CategoryPatrol,
 			},
 		},
 	}
@@ -219,19 +232,25 @@ type PatrolNotStuckCheck struct {
 	stuckThreshold time.Duration
 }
 
+// DefaultStuckThreshold is the fallback when no role bead config exists.
+// Per ZFC: "Let agents decide thresholds. 'Stuck' is a judgment call."
+const DefaultStuckThreshold = 1 * time.Hour
+
 // NewPatrolNotStuckCheck creates a new patrol not stuck check.
 func NewPatrolNotStuckCheck() *PatrolNotStuckCheck {
 	return &PatrolNotStuckCheck{
 		BaseCheck: BaseCheck{
 			CheckName:        "patrol-not-stuck",
 			CheckDescription: "Check for stuck patrol wisps (>1h in_progress)",
+			CheckCategory:    CategoryPatrol,
 		},
-		stuckThreshold: 1 * time.Hour,
+		stuckThreshold: DefaultStuckThreshold,
 	}
 }
 
 // Run checks for stuck patrol wisps.
 func (c *PatrolNotStuckCheck) Run(ctx *CheckContext) *CheckResult {
+
 	rigs, err := discoverRigs(ctx.TownRoot)
 	if err != nil {
 		return &CheckResult{
@@ -252,20 +271,24 @@ func (c *PatrolNotStuckCheck) Run(ctx *CheckContext) *CheckResult {
 
 	var stuckWisps []string
 	for _, rigName := range rigs {
-		// Check main beads database for wisps (issues with Wisp=true)
-		// Follows redirect if present (rig root may redirect to mayor/rig/.beads)
 		rigPath := filepath.Join(ctx.TownRoot, rigName)
-		beadsDir := beads.ResolveBeadsDir(rigPath)
-		beadsPath := filepath.Join(beadsDir, "issues.jsonl")
-		stuck := c.checkStuckWisps(beadsPath, rigName)
+
+		// Query Dolt database (the only supported backend).
+		stuck, err := c.checkStuckWispsDolt(rigPath, rigName)
+		if err != nil {
+			// Dolt query failed — report as error rather than silently skipping.
+			stuckWisps = append(stuckWisps, fmt.Sprintf("%s: Dolt query failed: %v", rigName, err))
+			continue
+		}
 		stuckWisps = append(stuckWisps, stuck...)
 	}
 
+	thresholdStr := c.stuckThreshold.String()
 	if len(stuckWisps) > 0 {
 		return &CheckResult{
 			Name:    c.Name(),
 			Status:  StatusWarning,
-			Message: fmt.Sprintf("%d stuck patrol wisp(s) found (>1h)", len(stuckWisps)),
+			Message: fmt.Sprintf("%d stuck patrol wisp(s) found (>%s)", len(stuckWisps), thresholdStr),
 			Details: stuckWisps,
 			FixHint: "Manual review required - wisps may need to be burned or sessions restarted",
 		}
@@ -278,42 +301,58 @@ func (c *PatrolNotStuckCheck) Run(ctx *CheckContext) *CheckResult {
 	}
 }
 
-// checkStuckWisps returns descriptions of stuck wisps in a rig.
-func (c *PatrolNotStuckCheck) checkStuckWisps(issuesPath string, rigName string) []string {
-	file, err := os.Open(issuesPath)
+// stuckWispsQuery selects in_progress issues for stuck-wisp detection via Dolt.
+const stuckWispsQuery = `SELECT id, title, status, updated_at FROM issues WHERE status = 'in_progress' ORDER BY updated_at ASC`
+
+// checkStuckWispsDolt queries the Dolt database for stuck wisps using bd sql.
+// Returns an error if the query fails (caller should fall back to JSONL).
+func (c *PatrolNotStuckCheck) checkStuckWispsDolt(rigPath string, rigName string) ([]string, error) {
+	cmd := exec.Command("bd", "sql", "--csv", stuckWispsQuery) //nolint:gosec // G204: query is a constant
+	cmd.Dir = rigPath
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil // No issues file
+		return nil, fmt.Errorf("bd sql: %w", err)
 	}
-	defer file.Close()
+
+	r := csv.NewReader(strings.NewReader(string(output)))
+	records, err := r.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("csv parse: %w", err)
+	}
+	if len(records) < 2 {
+		return nil, nil // No results (header only or empty)
+	}
 
 	var stuck []string
-	cutoff := time.Now().Add(-c.stuckThreshold)
+	// Use UTC for cutoff: Dolt stores timestamps in UTC, and time.Parse
+	// without timezone info returns UTC times. Using local time here caused
+	// false "future timestamp" alarms every evening PDT (gt-ty4).
+	cutoff := time.Now().UTC().Add(-c.stuckThreshold)
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
+	for _, rec := range records[1:] { // Skip CSV header
+		if len(rec) < 4 {
 			continue
 		}
+		id := strings.TrimSpace(rec[0])
+		title := strings.TrimSpace(rec[1])
+		updatedAt := strings.TrimSpace(rec[3])
 
-		var issue struct {
-			ID        string    `json:"id"`
-			Title     string    `json:"title"`
-			Status    string    `json:"status"`
-			UpdatedAt time.Time `json:"updated_at"`
-		}
-		if err := json.Unmarshal([]byte(line), &issue); err != nil {
-			continue
+		t, err := time.Parse("2006-01-02 15:04:05", updatedAt)
+		if err != nil {
+			// Try RFC3339 as fallback
+			t, err = time.Parse(time.RFC3339, updatedAt)
+			if err != nil {
+				continue
+			}
 		}
 
-		// Check for in_progress issues older than threshold
-		if issue.Status == "in_progress" && !issue.UpdatedAt.IsZero() && issue.UpdatedAt.Before(cutoff) {
-			stuck = append(stuck, fmt.Sprintf("%s: %s (%s) - stale since %s",
-				rigName, issue.ID, issue.Title, issue.UpdatedAt.Format("2006-01-02 15:04")))
+		if !t.IsZero() && t.Before(cutoff) {
+			stuck = append(stuck, fmt.Sprintf("%s: %s (%s) - stale since %s UTC",
+				rigName, id, title, t.UTC().Format("2006-01-02 15:04")))
 		}
 	}
 
-	return stuck
+	return stuck, nil
 }
 
 // PatrolPluginsAccessibleCheck verifies plugin directories exist and are readable.
@@ -329,6 +368,7 @@ func NewPatrolPluginsAccessibleCheck() *PatrolPluginsAccessibleCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "patrol-plugins-accessible",
 				CheckDescription: "Check if plugin directories exist and are readable",
+				CheckCategory:    CategoryPatrol,
 			},
 		},
 	}
@@ -382,118 +422,93 @@ func (c *PatrolPluginsAccessibleCheck) Fix(ctx *CheckContext) error {
 	return nil
 }
 
-// PatrolRolesHavePromptsCheck verifies that internal/templates/roles/*.md.tmpl exist for each rig.
-// Checks at <town>/<rig>/mayor/rig/internal/templates/roles/*.md.tmpl
-// Fix copies embedded templates to missing locations.
-type PatrolRolesHavePromptsCheck struct {
+// PatrolPluginDriftCheck detects when runtime plugins are out of sync with source.
+type PatrolPluginDriftCheck struct {
 	FixableCheck
-	// missingByRig tracks missing templates per rig: rigName -> []missingFiles
-	missingByRig map[string][]string
+	sourceDir string
+	targetDir string
 }
 
-// NewPatrolRolesHavePromptsCheck creates a new patrol roles have prompts check.
-func NewPatrolRolesHavePromptsCheck() *PatrolRolesHavePromptsCheck {
-	return &PatrolRolesHavePromptsCheck{
+// NewPatrolPluginDriftCheck creates a new plugin drift check.
+func NewPatrolPluginDriftCheck() *PatrolPluginDriftCheck {
+	return &PatrolPluginDriftCheck{
 		FixableCheck: FixableCheck{
 			BaseCheck: BaseCheck{
-				CheckName:        "patrol-roles-have-prompts",
-				CheckDescription: "Check if internal/templates/roles/*.md.tmpl exist for each patrol role",
+				CheckName:        "patrol-plugin-drift",
+				CheckDescription: "Check if runtime plugins match source repo",
+				CheckCategory:    CategoryPatrol,
 			},
 		},
 	}
 }
 
-var requiredRolePrompts = []string{
-	"deacon.md.tmpl",
-	"witness.md.tmpl",
-	"refinery.md.tmpl",
-}
+// Run checks for plugin drift between source and runtime.
+func (c *PatrolPluginDriftCheck) Run(ctx *CheckContext) *CheckResult {
+	c.targetDir = filepath.Join(ctx.TownRoot, "plugins")
 
-func (c *PatrolRolesHavePromptsCheck) Run(ctx *CheckContext) *CheckResult {
-	c.missingByRig = make(map[string][]string)
+	sourceDir, err := plugin.FindGastownSource(ctx.TownRoot)
+	if err != nil {
+		return &CheckResult{
+			Name:    c.Name(),
+			Status:  StatusOK,
+			Message: "Plugin source not found (skipping drift check)",
+		}
+	}
+	c.sourceDir = sourceDir
 
-	rigs, err := discoverRigs(ctx.TownRoot)
+	// Skip if source and target are the same directory
+	srcAbs, _ := filepath.Abs(sourceDir)
+	tgtAbs, _ := filepath.Abs(c.targetDir)
+	if srcAbs == tgtAbs {
+		return &CheckResult{
+			Name:    c.Name(),
+			Status:  StatusOK,
+			Message: "Source and runtime are same directory",
+		}
+	}
+
+	report, err := plugin.DetectDrift(sourceDir, c.targetDir)
 	if err != nil {
 		return &CheckResult{
 			Name:    c.Name(),
 			Status:  StatusError,
-			Message: "Failed to discover rigs",
+			Message: "Failed to check plugin drift",
 			Details: []string{err.Error()},
 		}
 	}
 
-	if len(rigs) == 0 {
+	if !report.HasDrift() {
 		return &CheckResult{
 			Name:    c.Name(),
 			Status:  StatusOK,
-			Message: "No rigs configured",
+			Message: "Runtime plugins match source",
 		}
 	}
 
-	var missingPrompts []string
-	for _, rigName := range rigs {
-		// Check in mayor's clone (canonical for the rig)
-		mayorRig := filepath.Join(ctx.TownRoot, rigName, "mayor", "rig")
-		templatesDir := filepath.Join(mayorRig, "internal", "templates", "roles")
-
-		var rigMissing []string
-		for _, roleFile := range requiredRolePrompts {
-			promptPath := filepath.Join(templatesDir, roleFile)
-			if _, err := os.Stat(promptPath); os.IsNotExist(err) {
-				missingPrompts = append(missingPrompts, fmt.Sprintf("%s: %s", rigName, roleFile))
-				rigMissing = append(rigMissing, roleFile)
-			}
-		}
-		if len(rigMissing) > 0 {
-			c.missingByRig[rigName] = rigMissing
-		}
+	var details []string
+	for _, d := range report.Drifted {
+		details = append(details, fmt.Sprintf("%s: content differs", d.Name))
 	}
-
-	if len(missingPrompts) > 0 {
-		return &CheckResult{
-			Name:    c.Name(),
-			Status:  StatusWarning,
-			Message: fmt.Sprintf("%d role prompt template(s) missing", len(missingPrompts)),
-			Details: missingPrompts,
-			FixHint: "Run 'gt doctor --fix' to copy embedded templates to rig repos",
-		}
+	for _, name := range report.Missing {
+		details = append(details, fmt.Sprintf("%s: missing from runtime", name))
 	}
 
 	return &CheckResult{
 		Name:    c.Name(),
-		Status:  StatusOK,
-		Message: "All patrol role prompt templates found",
+		Status:  StatusWarning,
+		Message: fmt.Sprintf("%d plugin(s) out of sync", len(report.Drifted)+len(report.Missing)),
+		Details: details,
+		FixHint: "Run 'gt plugin sync' to update runtime plugins",
 	}
 }
 
-func (c *PatrolRolesHavePromptsCheck) Fix(ctx *CheckContext) error {
-	allTemplates, err := templates.GetAllRoleTemplates()
-	if err != nil {
-		return fmt.Errorf("getting embedded templates: %w", err)
+// Fix syncs plugins from source to runtime.
+func (c *PatrolPluginDriftCheck) Fix(ctx *CheckContext) error {
+	if c.sourceDir == "" || c.targetDir == "" {
+		return fmt.Errorf("drift check did not run; cannot fix")
 	}
-
-	for rigName, missingFiles := range c.missingByRig {
-		mayorRig := filepath.Join(ctx.TownRoot, rigName, "mayor", "rig")
-		templatesDir := filepath.Join(mayorRig, "internal", "templates", "roles")
-
-		if err := os.MkdirAll(templatesDir, 0755); err != nil {
-			return fmt.Errorf("creating %s: %w", templatesDir, err)
-		}
-
-		for _, roleFile := range missingFiles {
-			content, ok := allTemplates[roleFile]
-			if !ok {
-				continue
-			}
-
-			destPath := filepath.Join(templatesDir, roleFile)
-			if err := os.WriteFile(destPath, content, 0644); err != nil {
-				return fmt.Errorf("writing %s in %s: %w", roleFile, rigName, err)
-			}
-		}
-	}
-
-	return nil
+	_, err := plugin.SyncPlugins(c.sourceDir, c.targetDir, false)
+	return err
 }
 
 // discoverRigs finds all registered rigs.

@@ -5,7 +5,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // ThemeCheck verifies tmux sessions have correct themes applied.
@@ -20,6 +21,7 @@ func NewThemeCheck() *ThemeCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "themes",
 				CheckDescription: "Check tmux session theme configuration",
+				CheckCategory:    CategoryConfig,
 			},
 		},
 	}
@@ -43,7 +45,7 @@ func (c *ThemeCheck) Run(ctx *CheckContext) *CheckResult {
 	// Check for Gas Town sessions
 	var gtSessions []string
 	for _, s := range sessions {
-		if strings.HasPrefix(s, "gt-") {
+		if session.IsKnownSession(s) {
 			gtSessions = append(gtSessions, s)
 		}
 	}
@@ -99,7 +101,7 @@ func (c *ThemeCheck) Fix(ctx *CheckContext) error {
 
 // getSessionStatusLeft retrieves the status-left setting for a tmux session.
 func getSessionStatusLeft(session string) (string, error) {
-	cmd := exec.Command("tmux", "show-options", "-t", session, "status-left")
+	cmd := tmux.BuildCommand("show-options", "-t", session, "status-left")
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err

@@ -10,26 +10,30 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/config"
-	"github.com/cursorworkshop/cursor-gastown/internal/git"
-	"github.com/cursorworkshop/cursor-gastown/internal/polecat"
-	"github.com/cursorworkshop/cursor-gastown/internal/rig"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/suggest"
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
-	"github.com/cursorworkshop/cursor-gastown/internal/townlog"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/polecat"
+	"github.com/harness-institute/cursor-gastown/internal/rig"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/suggest"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/townlog"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // Session command flags
 var (
-	sessionIssue     string
-	sessionForce     bool
-	sessionLines     int
-	sessionMessage   string
-	sessionFile      string
-	sessionRigFilter string
-	sessionListJSON  bool
+	sessionIssue               string
+	sessionForce               bool
+	sessionLines               int
+	sessionMessage             string
+	sessionFile                string
+	sessionRigFilter           string
+	sessionListJSON            bool
+	sessionStatusJSON          bool
+	sessionHealthJSON          bool
+	sessionHealthMaxInactivity time.Duration
 )
 
 var sessionCmd = &cobra.Command{
@@ -40,11 +44,11 @@ var sessionCmd = &cobra.Command{
 	RunE:    requireSubcommand,
 	Long: `Manage tmux sessions for polecats.
 
-Sessions are tmux sessions running the agent for each polecat.
+Sessions are tmux sessions running Claude for each polecat.
 Use the subcommands to start, stop, attach, and monitor sessions.
 
 TIP: To send messages to a running session, use 'gt nudge' (not 'session inject').
-The nudge command uses reliable delivery that works correctly with Cursor.`,
+The nudge command uses reliable delivery that works correctly with Claude Code.`,
 }
 
 var sessionStartCmd = &cobra.Command{
@@ -53,7 +57,7 @@ var sessionStartCmd = &cobra.Command{
 	Long: `Start a new tmux session for a polecat.
 
 Creates a tmux session, navigates to the polecat's working directory,
-and launches the agent. Optionally inject an initial issue to work on.
+and launches claude. Optionally inject an initial issue to work on.
 
 Examples:
   gt session start wyvern/Toast
@@ -113,9 +117,9 @@ var sessionInjectCmd = &cobra.Command{
 	Short: "Send message to session (prefer 'gt nudge')",
 	Long: `Send a message to a polecat session.
 
-NOTE: For sending messages to agent sessions, use 'gt nudge' instead.
+NOTE: For sending messages to Claude sessions, use 'gt nudge' instead.
 It uses reliable delivery (literal mode + timing) that works correctly
-with Cursor's input handling.
+with Claude Code's input handling.
 
 This command is a low-level primitive for file-based injection or
 cases where you need raw tmux send-keys behavior.
@@ -166,6 +170,25 @@ Examples:
 	RunE: runSessionCheck,
 }
 
+var sessionHealthCmd = &cobra.Command{
+	Use:   "health <tmux-session>",
+	Short: "Check a tmux agent session with central runtime liveness",
+	Long: `Check a tmux agent session using the central runtime-aware liveness path.
+
+This wraps tmux.CheckSessionHealth, which reads GT_PROCESS_NAMES/GT_AGENT from
+the session environment before falling back to built-in agent process names.
+
+The command exits successfully for all valid health states; inspect the status
+field when using --json. Operational failures, argument errors, or invalid flags
+return non-zero.
+
+Examples:
+  gt session health gt-vault --json
+  gt session health gt-vault --json --max-inactivity 30m`,
+	Args: cobra.ExactArgs(1),
+	RunE: runSessionHealth,
+}
+
 func init() {
 	// Start flags
 	sessionStartCmd.Flags().StringVar(&sessionIssue, "issue", "", "Issue ID to work on")
@@ -187,6 +210,13 @@ func init() {
 	// Restart flags
 	sessionRestartCmd.Flags().BoolVarP(&sessionForce, "force", "f", false, "Force immediate shutdown")
 
+	// Status flags
+	sessionStatusCmd.Flags().BoolVar(&sessionStatusJSON, "json", false, "Output as JSON")
+
+	// Health flags
+	sessionHealthCmd.Flags().BoolVar(&sessionHealthJSON, "json", false, "Output as JSON")
+	sessionHealthCmd.Flags().DurationVar(&sessionHealthMaxInactivity, "max-inactivity", 0, "Maximum tmux inactivity before reporting agent-hung (0 disables activity check)")
+
 	// Add subcommands
 	sessionCmd.AddCommand(sessionStartCmd)
 	sessionCmd.AddCommand(sessionStopCmd)
@@ -197,8 +227,27 @@ func init() {
 	sessionCmd.AddCommand(sessionRestartCmd)
 	sessionCmd.AddCommand(sessionStatusCmd)
 	sessionCmd.AddCommand(sessionCheckCmd)
+	sessionCmd.AddCommand(sessionHealthCmd)
 
 	rootCmd.AddCommand(sessionCmd)
+}
+
+type sessionHealthReport struct {
+	Session              string `json:"session"`
+	Status               string `json:"status"`
+	Healthy              bool   `json:"healthy"`
+	Zombie               bool   `json:"zombie"`
+	MaxInactivitySeconds int64  `json:"max_inactivity_seconds"`
+}
+
+func newSessionHealthReport(session string, status tmux.ZombieStatus, maxInactivity time.Duration) sessionHealthReport {
+	return sessionHealthReport{
+		Session:              session,
+		Status:               status.String(),
+		Healthy:              status == tmux.SessionHealthy,
+		Zombie:               status.IsZombie(),
+		MaxInactivitySeconds: int64(maxInactivity.Seconds()),
+	}
 }
 
 // parseAddress parses "rig/polecat" format.
@@ -257,7 +306,7 @@ func runSessionStart(cmd *cobra.Command, args []string) error {
 	}
 	if !found {
 		suggestions := suggest.FindSimilar(polecatName, r.Polecats, 3)
-		hint := fmt.Sprintf("Create with: gt polecat add %s/%s", rigName, polecatName)
+		hint := fmt.Sprintf("Create with: gt polecat identity add %s %s", rigName, polecatName)
 		return fmt.Errorf("%s", suggest.FormatSuggestion("Polecat", polecatName, suggestions, hint))
 	}
 
@@ -271,7 +320,7 @@ func runSessionStart(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("%s Session started. Attach with: %s\n",
-		style.Bold.Render("OK"),
+		style.Bold.Render("✓"),
 		style.Dim.Render(fmt.Sprintf("gt session at %s/%s", rigName, polecatName)))
 
 	// Log wake event
@@ -304,7 +353,7 @@ func runSessionStop(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("stopping session: %w", err)
 	}
 
-	fmt.Printf("%s Session stopped.\n", style.Bold.Render("OK"))
+	fmt.Printf("%s Session stopped.\n", style.Bold.Render("✓"))
 
 	// Log kill event
 	if townRoot, err := workspace.FindFromCwd(); err == nil && townRoot != "" {
@@ -331,8 +380,18 @@ func runSessionAttach(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Attach (this replaces the process)
-	return polecatMgr.Attach(polecatName)
+	running, err := polecatMgr.IsRunning(polecatName)
+	if err != nil {
+		return fmt.Errorf("checking session: %w", err)
+	}
+	if !running {
+		return polecat.ErrSessionNotFound
+	}
+
+	// Hand the terminal off to tmux via syscall.Exec so tmux inherits our
+	// controlling TTY directly. Running tmux as a subprocess with buffered
+	// stdio triggers "open terminal failed: not a terminal".
+	return attachToTmuxSession(polecatMgr.SessionName(polecatName))
 }
 
 // SessionListItem represents a session in list output.
@@ -485,7 +544,7 @@ func runSessionInject(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("%s Message sent to %s/%s\n",
-		style.Bold.Render("OK"), rigName, polecatName)
+		style.Bold.Render("✓"), rigName, polecatName)
 	return nil
 }
 
@@ -516,6 +575,17 @@ func runSessionRestart(cmd *cobra.Command, args []string) error {
 		if err := polecatMgr.Stop(polecatName, sessionForce); err != nil {
 			return fmt.Errorf("stopping session: %w", err)
 		}
+
+		// Wait for session to fully terminate before starting a new one.
+		// Without this, Start may fail or create a duplicate if the old
+		// session hasn't been cleaned up by tmux yet.
+		for i := 0; i < 10; i++ {
+			still, _ := polecatMgr.IsRunning(polecatName)
+			if !still {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
 	}
 
 	// Start fresh session
@@ -526,7 +596,7 @@ func runSessionRestart(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("%s Session restarted. Attach with: %s\n",
-		style.Bold.Render("OK"),
+		style.Bold.Render("✓"),
 		style.Dim.Render(fmt.Sprintf("gt session at %s/%s", rigName, polecatName)))
 	return nil
 }
@@ -542,13 +612,17 @@ func runSessionStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Get session info
 	info, err := polecatMgr.Status(polecatName)
 	if err != nil {
 		return fmt.Errorf("getting status: %w", err)
 	}
 
-	// Format output
+	if sessionStatusJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(info)
+	}
+
 	fmt.Printf("%s Session: %s/%s\n\n", style.Bold.Render("📺"), rigName, polecatName)
 
 	if info.Running {
@@ -573,6 +647,25 @@ func runSessionStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("\nAttach with: %s\n", style.Dim.Render(fmt.Sprintf("gt session at %s/%s", rigName, polecatName)))
+	return nil
+}
+
+func runSessionHealth(cmd *cobra.Command, args []string) error {
+	sessionName := args[0]
+	status := tmux.NewTmux().CheckSessionHealth(sessionName, sessionHealthMaxInactivity)
+	report := newSessionHealthReport(sessionName, status, sessionHealthMaxInactivity)
+
+	if sessionHealthJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(report)
+	}
+
+	if report.Healthy {
+		fmt.Printf("%s: %s\n", sessionName, style.Bold.Render(report.Status))
+	} else {
+		fmt.Printf("%s: %s\n", sessionName, style.Dim.Render(report.Status))
+	}
 	return nil
 }
 
@@ -649,23 +742,26 @@ func runSessionCheck(cmd *cobra.Command, args []string) error {
 			if !entry.IsDir() {
 				continue
 			}
+			if strings.HasPrefix(entry.Name(), ".") {
+				continue
+			}
 			polecatName := entry.Name()
-			sessionName := fmt.Sprintf("gt-%s-%s", r.Name, polecatName)
+			sessionName := session.PolecatSessionName(session.PrefixFor(r.Name), polecatName)
 			totalChecked++
 
 			// Check if session exists
 			running, err := t.HasSession(sessionName)
 			if err != nil {
-				fmt.Printf("  %s %s/%s: %s\n", style.Bold.Render("WARN"), r.Name, polecatName, style.Dim.Render("error checking session"))
+				fmt.Printf("  %s %s/%s: %s\n", style.Bold.Render("⚠"), r.Name, polecatName, style.Dim.Render("error checking session"))
 				continue
 			}
 
 			if running {
-				fmt.Printf("  %s %s/%s: %s\n", style.Bold.Render("OK"), r.Name, polecatName, style.Dim.Render("session alive"))
+				fmt.Printf("  %s %s/%s: %s\n", style.Bold.Render("✓"), r.Name, polecatName, style.Dim.Render("session alive"))
 				totalHealthy++
 			} else {
 				// Check if polecat has work on hook (would need restart)
-				fmt.Printf("  %s %s/%s: %s\n", style.Bold.Render("[X]"), r.Name, polecatName, style.Dim.Render("session not running"))
+				fmt.Printf("  %s %s/%s: %s\n", style.Bold.Render("✗"), r.Name, polecatName, style.Dim.Render("session not running"))
 				totalCrashed++
 			}
 		}

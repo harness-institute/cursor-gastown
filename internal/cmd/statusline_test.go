@@ -1,86 +1,70 @@
 package cmd
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
 
-func TestCategorizeSessionRig(t *testing.T) {
-	tests := []struct {
-		session string
-		wantRig string
-	}{
-		// Standard polecat sessions
-		{"gt-gastown-slit", "gastown"},
-		{"gt-gastown-Toast", "gastown"},
-		{"gt-myrig-worker", "myrig"},
+	"github.com/harness-institute/cursor-gastown/internal/session"
+)
 
-		// Crew sessions
-		{"gt-gastown-crew-max", "gastown"},
-		{"gt-myrig-crew-user", "myrig"},
+func setupCmdTestRegistry(t *testing.T) {
+	t.Helper()
+	registry := session.NewPrefixRegistry()
+	registry.Register("gt", "gastown")
+	registry.Register("do", "coder_dotfiles")
+	registry.Register("mr", "myrig")
+	old := session.DefaultRegistry()
+	session.SetDefaultRegistry(registry)
+	t.Cleanup(func() { session.SetDefaultRegistry(old) })
+}
 
-		// Witness sessions (canonical format: gt-<rig>-witness)
-		{"gt-gastown-witness", "gastown"},
-		{"gt-myrig-witness", "myrig"},
-		// Legacy format still works as fallback
-		{"gt-witness-gastown", "gastown"},
-		{"gt-witness-myrig", "myrig"},
-
-		// Refinery sessions
-		{"gt-gastown-refinery", "gastown"},
-		{"gt-myrig-refinery", "myrig"},
-
-		// Edge cases
-		{"gt-a-b", "a"}, // minimum valid
-
-		// Town-level agents (no rig, use hq- prefix)
-		{"hq-mayor", ""},
-		{"hq-deacon", ""},
+func TestStatusLineAvoidsBeadsHotPath(t *testing.T) {
+	if !beadsExemptCommands["status-line"] {
+		t.Fatal("status-line must be exempt from bd version checks")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.session, func(t *testing.T) {
-			agent := categorizeSession(tt.session)
-			gotRig := ""
-			if agent != nil {
-				gotRig = agent.Rig
-			}
-			if gotRig != tt.wantRig {
-				t.Errorf("categorizeSession(%q).Rig = %q, want %q", tt.session, gotRig, tt.wantRig)
-			}
-		})
+	if !branchCheckExemptCommands["status-line"] {
+		t.Fatal("status-line must be exempt from git branch/stale checks")
+	}
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(file), "statusline.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(data)
+	for _, forbidden := range []string{
+		`internal/beads`,
+		`internal/mail`,
+		`beads.New`,
+		`mail.New`,
+		`getHookedWork`,
+		`getMailPreview`,
+		`ListUnread`,
+		`getRefineryManager`,
+		`.Queue()`,
+	} {
+		if strings.Contains(source, forbidden) {
+			t.Fatalf("status-line hot path must not contain %q", forbidden)
+		}
 	}
 }
 
-func TestCategorizeSessionType(t *testing.T) {
-	tests := []struct {
-		session  string
-		wantType AgentType
-	}{
-		// Polecat sessions
-		{"gt-gastown-slit", AgentPolecat},
-		{"gt-gastown-Toast", AgentPolecat},
-		{"gt-myrig-worker", AgentPolecat},
-		{"gt-a-b", AgentPolecat},
-
-		// Non-polecat sessions
-		{"gt-gastown-witness", AgentWitness}, // canonical format
-		{"gt-witness-gastown", AgentWitness}, // legacy fallback
-		{"gt-gastown-refinery", AgentRefinery},
-		{"gt-gastown-crew-max", AgentCrew},
-		{"gt-myrig-crew-user", AgentCrew},
-
-		// Town-level agents (hq- prefix)
-		{"hq-mayor", AgentMayor},
-		{"hq-deacon", AgentDeacon},
+func TestSchedulerRunAvoidsRootBeadsChecks(t *testing.T) {
+	if !beadsExemptCommands["scheduler"] {
+		t.Fatal("scheduler must be exempt from root bd version checks")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.session, func(t *testing.T) {
-			agent := categorizeSession(tt.session)
-			if agent == nil {
-				t.Fatalf("categorizeSession(%q) returned nil", tt.session)
-			}
-			if agent.Type != tt.wantType {
-				t.Errorf("categorizeSession(%q).Type = %v, want %v", tt.session, agent.Type, tt.wantType)
-			}
-		})
+	if !branchCheckExemptCommands["scheduler"] {
+		t.Fatal("scheduler must be exempt from root git branch checks")
+	}
+	if !isCommandOrAncestorExempt(schedulerRunCmd, beadsExemptCommands) {
+		t.Fatal("scheduler run must inherit bd exemption from scheduler parent")
+	}
+	if !isCommandOrAncestorExempt(schedulerRunCmd, branchCheckExemptCommands) {
+		t.Fatal("scheduler run must inherit branch-check exemption from scheduler parent")
 	}
 }
