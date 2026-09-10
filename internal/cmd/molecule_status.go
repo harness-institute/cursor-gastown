@@ -7,15 +7,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
-	"github.com/cursorworkshop/cursor-gastown/internal/config"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
-// Note: Agent field parsing is now in internal/beads/fields.go (AgentFields, ParseAgentFieldsFromDescription)
+// Note: Agent field parsing is now in internal/beads/fields.go (AgentFields, ParseAgentFields)
 
 // buildAgentBeadID constructs the agent bead ID from an agent identity.
 // Uses canonical naming: prefix-rig-role-name
@@ -45,6 +47,8 @@ func buildAgentBeadID(identity string, role Role, townRoot string) string {
 			return beads.MayorBeadIDTown()
 		case identity == "deacon":
 			return beads.DeaconBeadIDTown()
+		case identity == "deacon-boot":
+			return beads.DogBeadIDTown("boot")
 		case len(parts) == 2 && parts[1] == "witness":
 			return beads.WitnessBeadIDWithPrefix(getPrefix(parts[0]), parts[0])
 		case len(parts) == 2 && parts[1] == "refinery":
@@ -92,6 +96,9 @@ func buildAgentBeadID(identity string, role Role, townRoot string) string {
 			return beads.CrewBeadIDWithPrefix(getPrefix(parts[0]), parts[0], parts[2])
 		}
 		return ""
+	case RoleBoot:
+		// Boot is a deacon dog — uses town-level dog bead ID
+		return beads.DogBeadIDTown("boot")
 	default:
 		return ""
 	}
@@ -119,8 +126,10 @@ type MoleculeStatusInfo struct {
 	HasWork          bool                  `json:"has_work"`
 	PinnedBead       *beads.Issue          `json:"pinned_bead,omitempty"`
 	AttachedMolecule string                `json:"attached_molecule,omitempty"`
+	AttachedFormula  string                `json:"attached_formula,omitempty"`
 	AttachedAt       string                `json:"attached_at,omitempty"`
 	AttachedArgs     string                `json:"attached_args,omitempty"`
+	AttachedVars     []string              `json:"attached_vars,omitempty"`
 	IsWisp           bool                  `json:"is_wisp"`
 	Progress         *MoleculeProgressInfo `json:"progress,omitempty"`
 	NextAction       string                `json:"next_action,omitempty"`
@@ -184,11 +193,25 @@ func runMoleculeProgress(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Build set of closed issue IDs for dependency checking
+	// Build set of closed issue IDs and collect open step IDs for dependency checking
 	closedIDs := make(map[string]bool)
+	var openStepIDs []string
 	for _, child := range children {
 		if child.Status == "closed" {
 			closedIDs[child.ID] = true
+		} else if child.Status == "open" {
+			openStepIDs = append(openStepIDs, child.ID)
+		}
+	}
+
+	// Fetch full details for open steps to get dependency info.
+	// bd list doesn't return dependencies, but bd show does.
+	var openStepsMap map[string]*beads.Issue
+	if len(openStepIDs) > 0 {
+		openStepsMap, err = b.ShowMultiple(openStepIDs)
+		if err != nil {
+			// Non-fatal: continue without dependency info (all open steps will be "ready")
+			openStepsMap = make(map[string]*beads.Issue)
 		}
 	}
 
@@ -202,22 +225,39 @@ func runMoleculeProgress(cmd *cobra.Command, args []string) error {
 		case "in_progress":
 			progress.InProgress++
 		case "open":
-			// Check if all dependencies are closed
+			// Get full step info with dependencies
+			step := openStepsMap[child.ID]
+
+			// Check if all dependencies are closed using Dependencies field
+			// (from bd show), not DependsOn (which is empty from bd list).
+			// Only "blocks" type dependencies block progress - ignore "parent-child".
 			allDepsClosed := true
-			for _, depID := range child.DependsOn {
-				if !closedIDs[depID] {
+			hasBlockingDeps := false
+			var deps []beads.IssueDep
+			if step != nil {
+				deps = step.Dependencies
+			}
+			for _, dep := range deps {
+				if !isBlockingDepType(dep.DependencyType) {
+					continue // Skip parent-child and other non-blocking relationships
+				}
+				hasBlockingDeps = true
+				if !closedIDs[dep.ID] {
 					allDepsClosed = false
 					break
 				}
 			}
 
-			if len(child.DependsOn) == 0 || allDepsClosed {
+			if !hasBlockingDeps || allDepsClosed {
 				progress.ReadySteps = append(progress.ReadySteps, child.ID)
 			} else {
 				progress.BlockedSteps = append(progress.BlockedSteps, child.ID)
 			}
 		}
 	}
+
+	// Sort ready steps by sequence number so step 1 comes before step 2, etc.
+	sortStepIDsBySequence(progress.ReadySteps)
 
 	// Calculate completion percentage
 	if progress.TotalSteps > 0 {
@@ -257,7 +297,7 @@ func runMoleculeProgress(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Blocked:     %d\n", len(progress.BlockedSteps))
 
 	if progress.Complete {
-		fmt.Printf("\n  %s\n", style.Bold.Render("[OK] Molecule complete!"))
+		fmt.Printf("\n  %s\n", style.Bold.Render("✓ Molecule complete!"))
 	}
 
 	return nil
@@ -293,26 +333,48 @@ func runMoleculeStatus(cmd *cobra.Command, args []string) error {
 	// Determine target agent
 	var target string
 	var roleCtx RoleContext
+	validationRole := RoleUnknown
 
 	if len(args) > 0 {
 		// Explicit target provided
-		target = args[0]
+		target = normalizeHookShowTarget(args[0])
+		callerCtx := detectRole(cwd, townRoot)
+		validationRole = callerCtx.Role
 	} else {
 		// Use cwd-based detection for status display
 		// This ensures we show the hook for the agent whose directory we're in,
 		// not the agent from the GT_ROLE env var (which might be different if
 		// we cd'd into another rig's crew/polecat directory)
 		roleCtx = detectRole(cwd, townRoot)
+		if roleCtx.Role == RoleUnknown {
+			// Fall back to GT_ROLE when cwd doesn't identify an agent
+			// (e.g., at rig root like ~/gt/beads instead of ~/gt/beads/witness)
+			roleCtx, _ = GetRoleWithContext(cwd, townRoot)
+		}
 		target = buildAgentIdentity(roleCtx)
 		if target == "" {
 			return fmt.Errorf("cannot determine agent identity (role: %s)", roleCtx.Role)
 		}
+		validationRole = roleCtx.Role
+	}
+	if err := ensureRoleWorktreeIntegrity(cwd, townRoot, validationRole); err != nil {
+		return err
 	}
 
-	// Find beads directory
+	// Find beads directory.
+	// First try CWD-based discovery, then resolve to the correct rig database
+	// based on the agent's identity. Without this, CWD at the town root (~/gt)
+	// queries the hq database instead of the rig's database where hooked beads
+	// actually live. See bd-hook-status-cwd-bug.
 	workDir, err := findLocalBeadsDir()
 	if err != nil {
 		return fmt.Errorf("not in a beads workspace: %w", err)
+	}
+
+	// Resolve to the agent's rig beads directory if CWD-based discovery
+	// found the wrong database. This matches runHookShow's resolution logic.
+	if !isTownLevelRole(target) && townRoot != "" {
+		workDir = resolveHookLookupWorkDir(workDir, target, townRoot)
 	}
 
 	b := beads.New(workDir)
@@ -323,34 +385,78 @@ func runMoleculeStatus(cmd *cobra.Command, args []string) error {
 		Role:   string(roleCtx.Role),
 	}
 
-	// Try to find agent bead and read hook slot
-	// This is the preferred method - agent beads have a hook_bead field
-	agentBeadID := buildAgentBeadID(target, roleCtx.Role, townRoot)
-	var hookBead *beads.Issue
-
-	if agentBeadID != "" {
-		// Try to fetch the agent bead
-		agentBead, err := b.Show(agentBeadID)
-		if err == nil && agentBead != nil && agentBead.Type == "agent" {
-			status.AgentBeadID = agentBeadID
-
-			// Read hook_bead from the agent bead's database field (not description!)
-			// The hook_bead column is updated by `bd slot set` in UpdateAgentState.
-			// IMPORTANT: Don't use ParseAgentFieldsFromDescription - the description
-			// field may contain stale data, causing the wrong issue to be hooked.
-			if agentBead.HookBead != "" {
-				// Fetch the bead on the hook
-				hookBead, err = b.Show(agentBead.HookBead)
-				if err != nil {
-					// Hook bead referenced but not found - report error but continue
-					hookBead = nil
-				}
+	// lookupHookedWork performs the full multi-step hook lookup for target.
+	// Called in a retry loop for polecats to handle Dolt propagation lag.
+	lookupHookedWork := func() *beads.Issue {
+		// Resolve agent bead ID for display purposes only.
+		// Agent bead's hook_bead field is no longer maintained (updateAgentHookBead is
+		// a no-op since hq-l6mm5), so reading it returns stale data. See GH#2371.
+		agentBeadID := buildAgentBeadID(target, roleCtx.Role, townRoot)
+		if agentBeadID != "" {
+			agentBeadPath := beads.ResolveHookDir(townRoot, agentBeadID, workDir)
+			agentB := b
+			if agentBeadPath != workDir {
+				agentB = beads.New(agentBeadPath)
+			}
+			agentBead, err := agentB.Show(agentBeadID)
+			if err == nil && beads.IsAgentBead(agentBead) {
+				status.AgentBeadID = agentBeadID
 			}
 		}
-		// If agent bead not found or not an agent type, fall through to legacy approach
+
+		// Query for active work using the authoritative source: bead status + assignee.
+		hookedBeads, err := listAssignedActiveWork(b, target)
+		if err != nil {
+			return nil
+		}
+
+		// For town-level roles (mayor, deacon), scan all rigs if nothing found locally
+		if len(hookedBeads) == 0 && isTownLevelRole(target) {
+			hookedBeads = scanAllRigsForHookedBeads(townRoot, target)
+		}
+
+		// For rig-level agents (polecats, crew), also search town-level beads.
+		// When the Mayor slings an hq-* bead to a polecat, the bead lives in
+		// townRoot/.beads, not the rig's .beads database.
+		// See: https://github.com/harness-institute/cursor-gastown/issues/1438
+		if len(hookedBeads) == 0 && !isTownLevelRole(target) && townRoot != "" {
+			townB := beads.New(filepath.Join(townRoot, ".beads"))
+			if townWork, err := listAssignedActiveWork(townB, target); err == nil && len(townWork) > 0 {
+				hookedBeads = townWork
+			}
+		}
+
+		if len(hookedBeads) > 0 {
+			return hookedBeads[0]
+		}
+		return nil
 	}
 
-	// If we found a hook bead via agent bead, use it
+	// Run the lookup. In polecat context, retry with backoff to handle Dolt
+	// propagation lag between the sling write and the nudge arriving here.
+	// See: https://github.com/harness-institute/cursor-gastown/issues/2389
+	var hookBead *beads.Issue
+	isPolecat := roleCtx.Role == RolePolecat ||
+		(os.Getenv("GT_ROLE") != "" && func() bool {
+			r, _, _ := parseRoleString(os.Getenv("GT_ROLE"))
+			return r == RolePolecat
+		}())
+
+	hookBead = lookupHookedWork()
+	if hookBead == nil && isPolecat {
+		const maxRetries = 5
+		const baseBackoff = 500 * time.Millisecond
+		const maxBackoff = 8 * time.Second
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			backoff := slingBackoff(attempt, baseBackoff, maxBackoff)
+			time.Sleep(backoff)
+			hookBead = lookupHookedWork()
+			if hookBead != nil {
+				break
+			}
+		}
+	}
+
 	if hookBead != nil {
 		status.HasWork = true
 		status.PinnedBead = hookBead
@@ -359,75 +465,22 @@ func runMoleculeStatus(cmd *cobra.Command, args []string) error {
 		attachment := beads.ParseAttachmentFields(hookBead)
 		if attachment != nil {
 			status.AttachedMolecule = attachment.AttachedMolecule
+			status.AttachedFormula = attachment.AttachedFormula
 			status.AttachedAt = attachment.AttachedAt
 			status.AttachedArgs = attachment.AttachedArgs
+			status.AttachedVars = attachment.AttachedVars
 
-			// Check if it's a wisp
 			status.IsWisp = strings.Contains(hookBead.Description, "wisp: true") ||
 				strings.Contains(hookBead.Description, "is_wisp: true")
 
-			// Get progress if there's an attached molecule
 			if attachment.AttachedMolecule != "" {
 				progress, _ := getMoleculeProgressInfo(b, attachment.AttachedMolecule)
 				status.Progress = progress
 				status.NextAction = determineNextAction(status)
-			}
-		}
-	} else {
-		// FALLBACK: Query for hooked beads (work on agent's hook)
-		// First try status=hooked (work that's been slung but not yet claimed)
-		hookedBeads, err := b.List(beads.ListOptions{
-			Status:   beads.StatusHooked,
-			Assignee: target,
-			Priority: -1,
-		})
-		if err != nil {
-			return fmt.Errorf("listing hooked beads: %w", err)
-		}
-
-		// If no hooked beads found, also check in_progress beads assigned to this agent.
-		// This handles the case where work was claimed (status changed to in_progress)
-		// but the session was interrupted before completion. The hook should persist.
-		if len(hookedBeads) == 0 {
-			inProgressBeads, err := b.List(beads.ListOptions{
-				Status:   "in_progress",
-				Assignee: target,
-				Priority: -1,
-			})
-			if err == nil && len(inProgressBeads) > 0 {
-				// Use the first in_progress bead (should typically be only one)
-				hookedBeads = inProgressBeads
-			}
-		}
-
-		// For town-level roles (mayor, deacon), scan all rigs if nothing found locally
-		if len(hookedBeads) == 0 && isTownLevelRole(target) {
-			hookedBeads = scanAllRigsForHookedBeads(townRoot, target)
-		}
-
-		status.HasWork = len(hookedBeads) > 0
-
-		if len(hookedBeads) > 0 {
-			// Take the first hooked bead
-			status.PinnedBead = hookedBeads[0]
-
-			// Check for attached molecule
-			attachment := beads.ParseAttachmentFields(hookedBeads[0])
-			if attachment != nil {
-				status.AttachedMolecule = attachment.AttachedMolecule
-				status.AttachedAt = attachment.AttachedAt
-				status.AttachedArgs = attachment.AttachedArgs
-
-				// Check if it's a wisp
-				status.IsWisp = strings.Contains(hookedBeads[0].Description, "wisp: true") ||
-					strings.Contains(hookedBeads[0].Description, "is_wisp: true")
-
-				// Get progress if there's an attached molecule
-				if attachment.AttachedMolecule != "" {
-					progress, _ := getMoleculeProgressInfo(b, attachment.AttachedMolecule)
-					status.Progress = progress
-					status.NextAction = determineNextAction(status)
-				}
+			} else if attachment.AttachedFormula != "" {
+				progress, _ := getMoleculeProgressInfo(b, hookBead.ID)
+				status.Progress = progress
+				status.NextAction = determineNextAction(status)
 			}
 		}
 	}
@@ -435,8 +488,10 @@ func runMoleculeStatus(cmd *cobra.Command, args []string) error {
 	// Determine next action if no work is slung
 	if !status.HasWork {
 		status.NextAction = "Check inbox for work assignments: gt mail inbox"
-	} else if status.AttachedMolecule == "" {
+	} else if status.AttachedMolecule == "" && status.AttachedFormula == "" {
 		status.NextAction = "Attach a molecule to start work: gt mol attach <bead-id> <molecule-id>"
+	} else if status.AttachedFormula != "" && status.NextAction == "" && status.PinnedBead != nil {
+		status.NextAction = "Show the workflow steps: gt prime or bd mol current " + status.PinnedBead.ID
 	}
 
 	// JSON output
@@ -447,17 +502,30 @@ func runMoleculeStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Human-readable output
-	return outputMoleculeStatus(status)
+	outputMoleculeStatus(status)
+	return nil
+}
+
+// extractRoleFromIdentity extracts the role name from an agent identity string
+// for handoff bead lookup. Handles trailing slashes (e.g. "mayor/" → "mayor")
+// and compound paths (e.g. "gastown/crew/jack" → "jack").
+func extractRoleFromIdentity(target string) string {
+	target = strings.TrimRight(target, "/")
+	parts := strings.Split(target, "/")
+	return parts[len(parts)-1]
 }
 
 // buildAgentIdentity constructs the agent identity string from role context.
-// Format matches session.AgentIdentity.Address() for consistency.
+// Town-level agents (mayor, deacon) use trailing slash to match the format
+// used when setting assignee on hooked beads (see resolveSelfTarget in sling.go).
 func buildAgentIdentity(ctx RoleContext) string {
 	switch ctx.Role {
 	case RoleMayor:
-		return "mayor"
+		return "mayor/"
 	case RoleDeacon:
-		return "deacon"
+		return "deacon/"
+	case RoleBoot:
+		return "deacon/boot"
 	case RoleWitness:
 		return ctx.Rig + "/witness"
 	case RoleRefinery:
@@ -466,6 +534,11 @@ func buildAgentIdentity(ctx RoleContext) string {
 		return ctx.Rig + "/polecats/" + ctx.Polecat
 	case RoleCrew:
 		return ctx.Rig + "/crew/" + ctx.Polecat
+	case RoleDog:
+		if ctx.Polecat == "" {
+			return ""
+		}
+		return "deacon/dogs/" + ctx.Polecat
 	default:
 		return ""
 	}
@@ -508,11 +581,25 @@ func getMoleculeProgressInfo(b *beads.Beads, moleculeRootID string) (*MoleculePr
 		}
 	}
 
-	// Build set of closed issue IDs for dependency checking
+	// Build set of closed issue IDs and collect open step IDs for dependency checking
 	closedIDs := make(map[string]bool)
+	var openStepIDs []string
 	for _, child := range children {
 		if child.Status == "closed" {
 			closedIDs[child.ID] = true
+		} else if child.Status == "open" {
+			openStepIDs = append(openStepIDs, child.ID)
+		}
+	}
+
+	// Fetch full details for open steps to get dependency info.
+	// bd list doesn't return dependencies, but bd show does.
+	var openStepsMap map[string]*beads.Issue
+	if len(openStepIDs) > 0 {
+		openStepsMap, err = b.ShowMultiple(openStepIDs)
+		if err != nil {
+			// Non-fatal: continue without dependency info (all open steps will be "ready")
+			openStepsMap = make(map[string]*beads.Issue)
 		}
 	}
 
@@ -526,22 +613,39 @@ func getMoleculeProgressInfo(b *beads.Beads, moleculeRootID string) (*MoleculePr
 		case "in_progress":
 			progress.InProgress++
 		case "open":
-			// Check if all dependencies are closed
+			// Get full step info with dependencies
+			step := openStepsMap[child.ID]
+
+			// Check if all dependencies are closed using Dependencies field
+			// (from bd show), not DependsOn (which is empty from bd list).
+			// Only "blocks" type dependencies block progress - ignore "parent-child".
 			allDepsClosed := true
-			for _, depID := range child.DependsOn {
-				if !closedIDs[depID] {
+			hasBlockingDeps := false
+			var deps []beads.IssueDep
+			if step != nil {
+				deps = step.Dependencies
+			}
+			for _, dep := range deps {
+				if !isBlockingDepType(dep.DependencyType) {
+					continue // Skip parent-child and other non-blocking relationships
+				}
+				hasBlockingDeps = true
+				if !closedIDs[dep.ID] {
 					allDepsClosed = false
 					break
 				}
 			}
 
-			if len(child.DependsOn) == 0 || allDepsClosed {
+			if !hasBlockingDeps || allDepsClosed {
 				progress.ReadySteps = append(progress.ReadySteps, child.ID)
 			} else {
 				progress.BlockedSteps = append(progress.BlockedSteps, child.ID)
 			}
 		}
 	}
+
+	// Sort ready steps by sequence number so step 1 comes before step 2, etc.
+	sortStepIDsBySequence(progress.ReadySteps)
 
 	// Calculate completion percentage
 	if progress.TotalSteps > 0 {
@@ -578,7 +682,7 @@ func determineNextAction(status MoleculeStatusInfo) string {
 }
 
 // outputMoleculeStatus outputs human-readable status.
-func outputMoleculeStatus(status MoleculeStatusInfo) error {
+func outputMoleculeStatus(status MoleculeStatusInfo) {
 	// Header with hook icon
 	fmt.Printf("\n%s Hook Status: %s\n", style.Bold.Render("🪝"), status.Target)
 	if status.Role != "" && status.Role != "unknown" {
@@ -589,18 +693,26 @@ func outputMoleculeStatus(status MoleculeStatusInfo) error {
 	if !status.HasWork {
 		fmt.Printf("%s\n", style.Dim.Render("Nothing on hook - no work slung"))
 		fmt.Printf("\n%s %s\n", style.Bold.Render("Next:"), status.NextAction)
-		return nil
+		return
 	}
 
 	// Show hooked bead info
 	if status.PinnedBead == nil {
 		fmt.Printf("%s\n", style.Dim.Render("Work indicated but no bead found"))
-		return nil
+		return
 	}
 
 	// AUTONOMOUS MODE banner - hooked work triggers autonomous execution
-	fmt.Println(style.Bold.Render("[>>] AUTONOMOUS MODE - Work on hook triggers immediate execution"))
+	fmt.Println(style.Bold.Render("🚀 AUTONOMOUS MODE - Work on hook triggers immediate execution"))
 	fmt.Println()
+
+	// Check if the hooked bead is already closed (someone closed it externally)
+	if status.PinnedBead.Status == "closed" {
+		fmt.Printf("%s Hooked bead %s is already closed!\n", style.Bold.Render("⚠"), status.PinnedBead.ID)
+		fmt.Printf("   Title: %s\n", status.PinnedBead.Title)
+		fmt.Printf("   This work was completed elsewhere. Clear your hook with: gt unsling\n")
+		return
+	}
 
 	// Check if this is a mail bead - display mail-specific format
 	if status.PinnedBead.Type == "message" {
@@ -611,11 +723,22 @@ func outputMoleculeStatus(status MoleculeStatusInfo) error {
 		}
 		fmt.Printf("   Subject: %s\n", status.PinnedBead.Title)
 		fmt.Printf("   Run: gt mail read %s\n", status.PinnedBead.ID)
-		return nil
+		return
 	}
 
 	fmt.Printf("%s %s: %s\n", style.Bold.Render("🪝 Hooked:"), status.PinnedBead.ID, status.PinnedBead.Title)
-
+	if status.AttachedFormula != "" {
+		fmt.Printf("%s %s\n", style.Bold.Render("📐 Formula:"), status.AttachedFormula)
+	}
+	if len(status.AttachedVars) > 0 {
+		fmt.Printf("%s\n", style.Bold.Render("🧩 Vars:"))
+		for _, variable := range status.AttachedVars {
+			fmt.Printf("   --var %s\n", variable)
+		}
+	}
+	if status.AttachedArgs != "" {
+		fmt.Printf("%s %s\n", style.Bold.Render("📋 Args:"), status.AttachedArgs)
+	}
 	// Show attached molecule
 	if status.AttachedMolecule != "" {
 		molType := "Molecule"
@@ -626,10 +749,7 @@ func outputMoleculeStatus(status MoleculeStatusInfo) error {
 		if status.AttachedAt != "" {
 			fmt.Printf("   Attached: %s\n", status.AttachedAt)
 		}
-		if status.AttachedArgs != "" {
-			fmt.Printf("   %s %s\n", style.Bold.Render("Args:"), status.AttachedArgs)
-		}
-	} else {
+	} else if status.AttachedFormula == "" {
 		fmt.Printf("%s\n", style.Dim.Render("No molecule attached (hooked bead still triggers autonomous work)"))
 	}
 
@@ -655,16 +775,143 @@ func outputMoleculeStatus(status MoleculeStatusInfo) error {
 		fmt.Printf("  Blocked:     %d\n", len(status.Progress.BlockedSteps))
 
 		if status.Progress.Complete {
-			fmt.Printf("\n%s\n", style.Bold.Render("[OK] Molecule complete!"))
+			fmt.Printf("\n%s\n", style.Bold.Render("✓ Molecule complete!"))
 		}
 	}
+
+	// Git divergence warning and recent trail (gt-7w6cq)
+	showGitDivergenceWarning()
+	showRecentTrailSummary()
 
 	// Next action hint
 	if status.NextAction != "" {
 		fmt.Printf("\n%s %s\n", style.Bold.Render("Next:"), status.NextAction)
 	}
+}
 
-	return nil
+// showGitDivergenceWarning fetches from origin and checks if the current branch
+// has diverged from its remote tracking branch, showing a warning if so.
+func showGitDivergenceWarning() {
+	g := git.NewGit(".")
+	if !g.IsRepo() {
+		return
+	}
+
+	branch, err := g.CurrentBranch()
+	if err != nil || branch == "" {
+		return
+	}
+
+	// Fetch quietly to get fresh remote refs. Non-fatal if it fails
+	// (e.g., offline, no remote).
+	_ = g.Fetch("origin")
+
+	remote := "origin/" + branch
+	ahead, aErr := g.CommitsAhead(remote, "HEAD")
+	behind, bErr := g.CountCommitsBehind(remote)
+
+	// Also check divergence from origin/main as a fallback — polecats
+	// work on feature branches that may not have a remote tracking branch,
+	// but we still want to warn if they're behind main.
+	if aErr != nil || bErr != nil {
+		// No tracking branch for current branch; check against origin/main
+		ahead, aErr = g.CommitsAhead("origin/main", "HEAD")
+		behind, bErr = g.CountCommitsBehind("origin/main")
+		if aErr != nil || bErr != nil {
+			return // Can't determine divergence at all — skip silently
+		}
+		remote = "origin/main"
+	}
+
+	if ahead == 0 && behind == 0 {
+		return // In sync
+	}
+
+	fmt.Println()
+	if ahead > 0 && behind > 0 {
+		fmt.Printf("%s Branch diverged: %d ahead, %d behind %s\n",
+			style.Warning.Render("⚠"), ahead, behind, remote)
+		fmt.Printf("  Run 'git pull --rebase' before starting work\n")
+	} else if behind > 0 {
+		fmt.Printf("%s Branch is %d commits behind %s\n",
+			style.Warning.Render("⚠"), behind, remote)
+		fmt.Printf("  Run 'git pull' to update\n")
+	} else {
+		fmt.Printf("%s Branch is %d commits ahead of %s (unpushed work)\n",
+			style.Dim.Render("ℹ"), ahead, remote)
+	}
+}
+
+// showRecentTrailSummary shows a compact summary of recent agent activity.
+// Leverages git log and beads to show what happened since last activity.
+func showRecentTrailSummary() {
+	g := git.NewGit(".")
+	if !g.IsRepo() {
+		return
+	}
+
+	// Get recent commits (last 24h) — summarize by author
+	since := time.Now().Add(-24 * time.Hour).Format(time.RFC3339)
+	gitArgs := []string{
+		"log",
+		"--format=%an",
+		"--since=" + since,
+		"-n50",
+		"--all",
+	}
+	gitCmd := exec.Command("git", gitArgs...)
+	output, err := gitCmd.Output()
+	if err != nil {
+		return
+	}
+
+	// Count commits per author
+	authorCounts := make(map[string]int)
+	totalCommits := 0
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		authorCounts[line]++
+		totalCommits++
+	}
+
+	if totalCommits == 0 {
+		return
+	}
+
+	// Build compact author summary (e.g., "3 commits by darcy, 2 by nux")
+	type authorCount struct {
+		name  string
+		count int
+	}
+	var authors []authorCount
+	for name, count := range authorCounts {
+		authors = append(authors, authorCount{name, count})
+	}
+	// Sort by count descending
+	for i := 0; i < len(authors); i++ {
+		for j := i + 1; j < len(authors); j++ {
+			if authors[j].count > authors[i].count {
+				authors[i], authors[j] = authors[j], authors[i]
+			}
+		}
+	}
+
+	var parts []string
+	for i, a := range authors {
+		if i >= 3 {
+			remaining := len(authors) - 3
+			parts = append(parts, fmt.Sprintf("+%d others", remaining))
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%d by %s", a.count, a.name))
+	}
+
+	fmt.Printf("\n%s Recent (24h): %d commits (%s)\n",
+		style.Dim.Render("📍"), totalCommits, strings.Join(parts, ", "))
 }
 
 func runMoleculeCurrent(cmd *cobra.Command, args []string) error {
@@ -695,6 +942,11 @@ func runMoleculeCurrent(cmd *cobra.Command, args []string) error {
 		// not the agent from the GT_ROLE env var (which might be different if
 		// we cd'd into another rig's crew/polecat directory)
 		roleCtx = detectRole(cwd, townRoot)
+		if roleCtx.Role == RoleUnknown {
+			// Fall back to GT_ROLE when cwd doesn't identify an agent
+			// (e.g., at rig root like ~/gt/beads instead of ~/gt/beads/witness)
+			roleCtx, _ = GetRoleWithContext(cwd, townRoot)
+		}
 		target = buildAgentIdentity(roleCtx)
 		if target == "" {
 			return fmt.Errorf("cannot determine agent identity (role: %s)", roleCtx.Role)
@@ -710,8 +962,7 @@ func runMoleculeCurrent(cmd *cobra.Command, args []string) error {
 	b := beads.New(workDir)
 
 	// Extract role from target for handoff bead lookup
-	parts := strings.Split(target, "/")
-	role := parts[len(parts)-1]
+	role := extractRoleFromIdentity(target)
 
 	// Find handoff bead for this identity
 	handoff, err := b.FindHandoffBead(role)
@@ -765,10 +1016,10 @@ func runMoleculeCurrent(cmd *cobra.Command, args []string) error {
 
 	info.StepsTotal = len(children)
 
-	// Build set of closed issue IDs for dependency checking
+	// Build set of closed issue IDs and collect open step IDs for dependency checking
 	closedIDs := make(map[string]bool)
 	var inProgressSteps []*beads.Issue
-	var readySteps []*beads.Issue
+	var openStepIDs []string
 
 	for _, child := range children {
 		switch child.Status {
@@ -777,24 +1028,50 @@ func runMoleculeCurrent(cmd *cobra.Command, args []string) error {
 			closedIDs[child.ID] = true
 		case "in_progress":
 			inProgressSteps = append(inProgressSteps, child)
+		case "open":
+			openStepIDs = append(openStepIDs, child.ID)
+		}
+	}
+
+	// Fetch full details for open steps to get dependency info.
+	// bd list doesn't return dependencies, but bd show does.
+	var openStepsMap map[string]*beads.Issue
+	if len(openStepIDs) > 0 {
+		openStepsMap, _ = b.ShowMultiple(openStepIDs)
+		if openStepsMap == nil {
+			openStepsMap = make(map[string]*beads.Issue)
 		}
 	}
 
 	// Find ready steps (open with all deps closed)
-	for _, child := range children {
-		if child.Status == "open" {
-			allDepsClosed := true
-			for _, depID := range child.DependsOn {
-				if !closedIDs[depID] {
-					allDepsClosed = false
-					break
-				}
+	var readySteps []*beads.Issue
+	for _, stepID := range openStepIDs {
+		step := openStepsMap[stepID]
+		if step == nil {
+			continue
+		}
+
+		// Check dependencies using Dependencies field (from bd show),
+		// not DependsOn (which is empty from bd list).
+		allDepsClosed := true
+		hasBlockingDeps := false
+		for _, dep := range step.Dependencies {
+			if !isBlockingDepType(dep.DependencyType) {
+				continue // Skip parent-child and other non-blocking relationships
 			}
-			if len(child.DependsOn) == 0 || allDepsClosed {
-				readySteps = append(readySteps, child)
+			hasBlockingDeps = true
+			if !closedIDs[dep.ID] {
+				allDepsClosed = false
+				break
 			}
 		}
+		if !hasBlockingDeps || allDepsClosed {
+			readySteps = append(readySteps, step)
+		}
 	}
+
+	// Sort ready steps by sequence number so step 1 comes before step 2, etc.
+	sortStepsBySequence(readySteps)
 
 	// Determine current step and status
 	if info.StepsComplete == info.StepsTotal && info.StepsTotal > 0 {
@@ -863,21 +1140,14 @@ func outputMoleculeCurrent(info MoleculeCurrentInfo) error {
 	return nil
 }
 
-// getGitRootForMolStatus returns the git root for hook file lookup.
-func getGitRootForMolStatus() (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
-	out, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
 // isTownLevelRole returns true if the agent ID is a town-level role.
 // Town-level roles (Mayor, Deacon) operate from the town root and may have
 // pinned beads in any rig's beads directory.
+// Accepts both "mayor" and "mayor/" formats for compatibility.
 func isTownLevelRole(agentID string) bool {
-	return agentID == "mayor" || agentID == "deacon"
+	return agentID == "mayor" || agentID == "mayor/" ||
+		agentID == "deacon" || agentID == "deacon/" ||
+		agentID == "deacon/boot" || agentID == "deacon-boot"
 }
 
 // extractMailSender extracts the sender from mail bead labels.
@@ -904,39 +1174,26 @@ func scanAllRigsForHookedBeads(townRoot, target string) []*beads.Issue {
 
 	// Scan each rig's beads directory
 	for _, route := range routes {
-		rigBeadsDir := filepath.Join(townRoot, route.Path)
+		// Handle both absolute and relative paths in routes.jsonl
+		// Go's filepath.Join doesn't replace with absolute paths like Python
+		var rigBeadsDir string
+		if filepath.IsAbs(route.Path) {
+			rigBeadsDir = route.Path
+		} else {
+			rigBeadsDir = filepath.Join(townRoot, route.Path)
+		}
 		if _, err := os.Stat(rigBeadsDir); os.IsNotExist(err) {
 			continue
 		}
 
 		b := beads.New(rigBeadsDir)
-
-		// First check for hooked beads
-		hookedBeads, err := b.List(beads.ListOptions{
-			Status:   beads.StatusHooked,
-			Assignee: target,
-			Priority: -1,
-		})
+		hookedBeads, err := listAssignedActiveWork(b, target)
 		if err != nil {
 			continue
 		}
 
 		if len(hookedBeads) > 0 {
 			return hookedBeads
-		}
-
-		// Also check for in_progress beads (work that was claimed but session interrupted)
-		inProgressBeads, err := b.List(beads.ListOptions{
-			Status:   "in_progress",
-			Assignee: target,
-			Priority: -1,
-		})
-		if err != nil {
-			continue
-		}
-
-		if len(inProgressBeads) > 0 {
-			return inProgressBeads
 		}
 	}
 

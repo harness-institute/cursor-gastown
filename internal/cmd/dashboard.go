@@ -3,17 +3,24 @@ package cmd
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/web"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/doltserver"
+	"github.com/harness-institute/cursor-gastown/internal/web"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 var (
 	dashboardPort int
+	dashboardBind string
 	dashboardOpen bool
 )
 
@@ -30,57 +37,151 @@ The dashboard shows real-time convoy status with:
 - Auto-refresh every 30 seconds via htmx
 
 Example:
-  gt dashboard              # Start on default port 8080
-  gt dashboard --port 3000  # Start on port 3000
-  gt dashboard --open       # Start and open browser`,
+  gt dashboard                    # Start on default port 8080
+  gt dashboard --port 3000        # Start on port 3000
+  gt dashboard --bind 0.0.0.0     # Listen on all interfaces
+  gt dashboard --open             # Start and open browser`,
 	RunE: runDashboard,
 }
 
 func init() {
 	dashboardCmd.Flags().IntVar(&dashboardPort, "port", 8080, "HTTP port to listen on")
+	defaultBind := "127.0.0.1"
+	if os.Getenv("IS_SANDBOX") != "" {
+		defaultBind = "0.0.0.0"
+	}
+	dashboardCmd.Flags().StringVar(&dashboardBind, "bind", defaultBind, "Address to bind to (use 0.0.0.0 for all interfaces)")
 	dashboardCmd.Flags().BoolVar(&dashboardOpen, "open", false, "Open browser automatically")
 	rootCmd.AddCommand(dashboardCmd)
 }
 
 func runDashboard(cmd *cobra.Command, args []string) error {
-	// Verify we're in a workspace
-	if _, err := workspace.FindFromCwdOrError(); err != nil {
-		return fmt.Errorf("not in a Gas Town workspace: %w", err)
+	// Check if we're in a workspace - if not, run in setup mode
+	var handler http.Handler
+	var err error
+	webCfg := config.DefaultWebTimeoutsConfig()
+
+	townRoot, wsErr := workspace.FindFromCwdOrError()
+	if wsErr != nil {
+		// No workspace - run in setup mode
+		handler, err = web.NewSetupMux()
+		if err != nil {
+			return fmt.Errorf("creating setup handler: %w", err)
+		}
+	} else {
+		// In a workspace - run normal dashboard
+
+		// Set BEADS_DOLT_PORT and GT_DOLT_PORT so bd/gt subprocesses connect
+		// to the actual Dolt SQL server, not the dashboard's HTTP listen port.
+		// Without this, inherited env vars could point bd at the wrong port.
+		ensureDoltPortEnv(townRoot)
+
+		fetcher, fetchErr := web.NewLiveConvoyFetcher()
+		if fetchErr != nil {
+			return fmt.Errorf("creating convoy fetcher: %w", fetchErr)
+		}
+
+		// Load web timeouts config (nil-safe: NewDashboardMux applies defaults)
+		if ts, loadErr := config.LoadOrCreateTownSettings(config.TownSettingsPath(townRoot)); loadErr == nil {
+			if ts.WebTimeouts != nil {
+				webCfg = ts.WebTimeouts
+			}
+		} else {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: loading town settings: %v (using defaults)\n", loadErr)
+		}
+
+		handler, err = web.NewDashboardMux(fetcher, webCfg)
+		if err != nil {
+			return fmt.Errorf("creating dashboard handler: %w", err)
+		}
 	}
 
-	// Create the live convoy fetcher
-	fetcher, err := web.NewLiveConvoyFetcher()
-	if err != nil {
-		return fmt.Errorf("creating convoy fetcher: %w", err)
+	// Build the listen address and display URL
+	listenAddr := fmt.Sprintf("%s:%d", dashboardBind, dashboardPort)
+	displayHost := dashboardBind
+	if displayHost == "0.0.0.0" {
+		if hostname, err := os.Hostname(); err == nil {
+			displayHost = hostname
+		} else {
+			displayHost = "localhost"
+		}
 	}
-
-	// Create the handler
-	handler, err := web.NewConvoyHandler(fetcher)
-	if err != nil {
-		return fmt.Errorf("creating convoy handler: %w", err)
-	}
-
-	// Build the URL
-	url := fmt.Sprintf("http://localhost:%d", dashboardPort)
+	url := fmt.Sprintf("http://%s:%d", displayHost, dashboardPort)
 
 	// Open browser if requested
 	if dashboardOpen {
 		go openBrowser(url)
 	}
 
+	maxRunTimeout := config.ParseDurationOrDefault(webCfg.MaxRunTimeout, 120*time.Second)
+	writeTimeout := maxRunTimeout + 15*time.Second
+	if writeTimeout < 60*time.Second {
+		writeTimeout = 60 * time.Second
+	}
+
 	// Start the server with timeouts
-	fmt.Printf("🚚 Gas Town Dashboard starting at %s\n", url)
-	fmt.Printf("   Press Ctrl+C to stop\n")
+	// Only show the large banner if the terminal is wide enough (98 cols)
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err == nil && width >= 98 {
+		fmt.Print(`
+ __       __  ________  __        ______    ______   __       __  ________
+|  \  _  |  \|        \|  \      /      \  /      \ |  \     /  \|        \
+| $$ / \ | $$| $$$$$$$$| $$     |  $$$$$$\|  $$$$$$\| $$\   /  $$| $$$$$$$$
+| $$/  $\| $$| $$__    | $$     | $$   \$$| $$  | $$| $$$\ /  $$$| $$__
+| $$  $$$\ $$| $$  \   | $$     | $$      | $$  | $$| $$$$\  $$$$| $$  \
+| $$ $$\$$\$$| $$$$$   | $$     | $$   __ | $$  | $$| $$\$$ $$ $$| $$$$$
+| $$$$  \$$$$| $$_____ | $$_____| $$__/  \| $$__/ $$| $$ \$$$| $$| $$_____
+| $$$    \$$$| $$     \| $$     \\$$    $$ \$$    $$| $$  \$ | $$| $$     \
+ \$$      \$$ \$$$$$$$$ \$$$$$$$$ \$$$$$$   \$$$$$$  \$$      \$$ \$$$$$$$$
+
+ ________   ______          ______    ______    ______   ________   ______   __       __  __    __
+|        \ /      \        /      \  /      \  /      \ |        \ /      \ |  \  _  |  \|  \  |  \
+ \$$$$$$$$|  $$$$$$\      |  $$$$$$\|  $$$$$$\|  $$$$$$\ \$$$$$$$$|  $$$$$$\| $$ / \ | $$| $$\ | $$
+   | $$   | $$  | $$      | $$ __\$$| $$__| $$| $$___\$$   | $$   | $$  | $$| $$/  $\| $$| $$$\| $$
+   | $$   | $$  | $$      | $$|    \| $$    $$ \$$    \    | $$   | $$  | $$| $$  $$$\ $$| $$$$\ $$
+   | $$   | $$  | $$      | $$ \$$$$| $$$$$$$$ _\$$$$$$\   | $$   | $$  | $$| $$ $$\$$\$$| $$\$$ $$
+   | $$   | $$__/ $$      | $$__| $$| $$  | $$|  \__| $$   | $$   | $$__/ $$| $$$$  \$$$$| $$ \$$$$
+   | $$    \$$    $$       \$$    $$| $$  | $$ \$$    $$   | $$    \$$    $$| $$$    \$$$| $$  \$$$
+    \$$     \$$$$$$         \$$$$$$  \$$   \$$  \$$$$$$     \$$     \$$$$$$  \$$      \$$ \$$   \$$
+
+`)
+	} else {
+		fmt.Print("\n  WELCOME TO GASTOWN\n\n")
+	}
+	fmt.Printf("  launching dashboard at %s  •  api: %s/api/  •  listening on %s  •  ctrl+c to stop\n", url, url, listenAddr)
 
 	server := &http.Server{
-		Addr:              fmt.Sprintf(":%d", dashboardPort),
+		Addr:              listenAddr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      60 * time.Second,
+		WriteTimeout:      writeTimeout,
 		IdleTimeout:       120 * time.Second,
 	}
 	return server.ListenAndServe()
+}
+
+// ensureDoltPortEnv sets GT_DOLT_PORT, BEADS_DOLT_SERVER_PORT,
+// BEADS_DOLT_PORT, and BEADS_DOLT_SERVER_HOST
+// to the actual Dolt server connection info. This prevents bd subprocesses from
+// inheriting stale or incorrect values from the environment.
+// Uses the same resolver as AgentEnv and doltserver.DefaultConfig.
+func ensureDoltPortEnv(townRoot string) {
+	port := config.ResolveDoltPort(townRoot)
+	if port <= 0 {
+		port = doltserver.DefaultPort
+	}
+	portStr := strconv.Itoa(port)
+	os.Setenv("GT_DOLT_PORT", portStr)
+	os.Setenv("BEADS_DOLT_SERVER_PORT", portStr)
+	os.Setenv("BEADS_DOLT_PORT", portStr)
+
+	if host := config.ResolveDoltHost(townRoot); host != "" {
+		os.Setenv("GT_DOLT_HOST", host)
+		os.Setenv("BEADS_DOLT_SERVER_HOST", host)
+	} else {
+		os.Unsetenv("BEADS_DOLT_SERVER_HOST")
+	}
 }
 
 // openBrowser opens the specified URL in the default browser.

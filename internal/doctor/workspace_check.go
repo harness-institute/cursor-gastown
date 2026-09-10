@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/harness-institute/cursor-gastown/internal/atomicfile"
 )
 
 // TownConfigExistsCheck verifies mayor/town.json exists.
@@ -18,6 +20,7 @@ func NewTownConfigExistsCheck() *TownConfigExistsCheck {
 		BaseCheck: BaseCheck{
 			CheckName:        "town-config-exists",
 			CheckDescription: "Check that mayor/town.json exists",
+			CheckCategory:    CategoryCore,
 		},
 	}
 }
@@ -53,6 +56,7 @@ func NewTownConfigValidCheck() *TownConfigValidCheck {
 		BaseCheck: BaseCheck{
 			CheckName:        "town-config-valid",
 			CheckDescription: "Check that mayor/town.json is valid with required fields",
+			CheckCategory:    CategoryCore,
 		},
 	}
 }
@@ -130,6 +134,7 @@ func NewRigsRegistryExistsCheck() *RigsRegistryExistsCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "rigs-registry-exists",
 				CheckDescription: "Check that mayor/rigs.json exists",
+				CheckCategory:    CategoryCore,
 			},
 		},
 	}
@@ -172,7 +177,7 @@ func (c *RigsRegistryExistsCheck) Fix(ctx *CheckContext) error {
 		return fmt.Errorf("marshaling empty rigs.json: %w", err)
 	}
 
-	return os.WriteFile(rigsPath, data, 0644)
+	return atomicfile.WriteFile(rigsPath, data, 0644)
 }
 
 // RigsRegistryValidCheck verifies mayor/rigs.json is valid and rigs exist.
@@ -188,6 +193,7 @@ func NewRigsRegistryValidCheck() *RigsRegistryValidCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "rigs-registry-valid",
 				CheckDescription: "Check that registered rigs exist on disk",
+				CheckCategory:    CategoryCore,
 			},
 		},
 	}
@@ -306,7 +312,7 @@ func (c *RigsRegistryValidCheck) Fix(ctx *CheckContext) error {
 		return fmt.Errorf("marshaling rigs.json: %w", err)
 	}
 
-	return os.WriteFile(rigsPath, newData, 0644)
+	return atomicfile.WriteFile(rigsPath, newData, 0644)
 }
 
 // MayorExistsCheck verifies the mayor/ directory structure.
@@ -320,6 +326,7 @@ func NewMayorExistsCheck() *MayorExistsCheck {
 		BaseCheck: BaseCheck{
 			CheckName:        "mayor-exists",
 			CheckDescription: "Check that mayor/ directory exists with required files",
+			CheckCategory:    CategoryCore,
 		},
 	}
 }

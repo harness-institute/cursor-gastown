@@ -1,0 +1,37 @@
+# Gas Town Vibe Configuration
+# Provisioned by Gas Town for agent integration
+
+# Model configuration
+active_model = "devstral-2"
+
+# Trust the current project directory
+# (Vibe will not ask about trusting this directory)
+
+# Session logging for resume capability
+enable_session_logs = true
+log_dir = ".vibe/logs"
+
+# Tools configuration - enable all tools for autonomous operation
+[tools.bash]
+permission = "always"
+
+[tools.read_file]
+permission = "always"
+
+[tools.write_file]
+permission = "always"
+
+[tools.search_replace]
+permission = "always"
+
+[tools.grep]
+permission = "always"
+
+[tools.glob]
+permission = "always"
+
+[tools.task]
+permission = "always"
+
+[tools.ask_user_question]
+permission = "always"

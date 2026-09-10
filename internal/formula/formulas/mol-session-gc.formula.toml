@@ -3,8 +3,8 @@ Clean stale sessions and garbage collect.
 
 Dogs work through molecules (poured from this formula) to clean up dead sessions, orphaned processes, and
 other system cruft. This is the garbage collector for Gas Town's runtime:
-- Dead tmux sessions (no Cursor process)
-- Orphaned Cursor processes (no tmux parent)
+- Dead tmux sessions (no Claude process)
+- Orphaned Claude processes (no tmux parent)
 - Stale wisps past retention
 - Leftover state files
 
@@ -59,7 +59,7 @@ gt hook               # Shows mode in hook_bead
 
 **Conservative targets:**
 - tmux sessions with no processes
-- Cursor processes with no tmux parent
+- Claude processes with no tmux parent
 - Wisps > 24 hours old
 
 **Aggressive additions:**
@@ -84,7 +84,7 @@ gt doctor -v
 
 **2. Parse doctor output for:**
 - orphan-sessions: Tmux sessions to kill
-- orphan-processes: Cursor processes to terminate
+- orphan-processes: Claude processes to terminate
 - wisp-gc: Wisps to delete
 
 **3. Additional scans (for aggressive mode):**
@@ -95,8 +95,9 @@ git branch --list 'polecat/*' | while read branch; do
   # If > 7 days old and no matching polecat, candidate for cleanup
 done
 
-# Old state files
-find ~/.gt/ -name "*.state" -mtime +7
+# Old runtime state files (stored under <rig>/.runtime/ as *.json).
+# Prefer using `gt doctor -v` to enumerate stale state — it knows all locations.
+find "$GT_TOWN_ROOT" -path "*/.runtime/*.json" -mtime +7 2>/dev/null
 ```
 
 **4. Compile cleanup manifest:**
@@ -158,8 +159,8 @@ gt doctor -v
 # Tmux sessions
 tmux list-sessions 2>/dev/null
 
-# Cursor processes
-pgrep -f cursor-agent
+# Claude processes
+pgrep -f claude
 
 # Wisps
 ls .beads-wisp/ 2>/dev/null | wc -l
@@ -244,7 +245,50 @@ Dog returns to available state in the pool.
 **Exit criteria:** Deacon notified, dog ready for next work."""
 
 [vars]
+[vars.wisp_type]
+description = "Type of wisp created for this molecule"
+default = "gc_report"
+
 [vars.mode]
 description = "GC mode: 'conservative' or 'aggressive'"
-required = true
 default = "conservative"
+
+[vars.age]
+description = "Age of item being cleaned (computed during execution)"
+default = ""
+
+[vars.bytes_freed]
+description = "Approximate bytes recovered (computed during execution)"
+default = ""
+
+[vars.error]
+description = "Error message for a failed cleanup (computed during execution)"
+default = ""
+
+[vars.identifier]
+description = "Identifier of item being cleaned (computed during execution)"
+default = ""
+
+[vars.item]
+description = "Item that failed cleanup (computed during execution)"
+default = ""
+
+[vars.reason]
+description = "Reason for cleanup (computed during execution)"
+default = ""
+
+[vars.report]
+description = "Full GC report text (computed during execution)"
+default = ""
+
+[vars.timestamp]
+description = "Timestamp of the GC run (computed during execution)"
+default = ""
+
+[vars.total_cleaned]
+description = "Total number of items cleaned (computed during execution)"
+default = ""
+
+[vars.type]
+description = "Type of item being cleaned (computed during execution)"
+default = ""

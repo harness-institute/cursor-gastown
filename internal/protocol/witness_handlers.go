@@ -5,8 +5,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/mail"
-	"github.com/cursorworkshop/cursor-gastown/internal/witness"
+	"github.com/harness-institute/cursor-gastown/internal/mail"
+	"github.com/harness-institute/cursor-gastown/internal/witness"
 )
 
 // DefaultWitnessHandler provides the default implementation for Witness protocol handlers.
@@ -64,13 +64,14 @@ func (h *DefaultWitnessHandler) HandleMerged(payload *MergedPayload) error {
 	// This verifies cleanup_status before nuking to prevent work loss.
 	nukeResult := witness.AutoNukeIfClean(h.WorkDir, h.Rig, payload.Polecat)
 	if nukeResult.Nuked {
-		fmt.Fprintf(h.Output, "[Witness] [OK] Auto-nuked polecat %s: %s\n", payload.Polecat, nukeResult.Reason)
+		fmt.Fprintf(h.Output, "[Witness] ✓ Auto-nuked polecat %s: %s\n", payload.Polecat, nukeResult.Reason)
 	} else if nukeResult.Skipped {
-		fmt.Fprintf(h.Output, "[Witness] [!] Cleanup skipped for %s: %s\n", payload.Polecat, nukeResult.Reason)
+		fmt.Fprintf(h.Output, "[Witness] ⚠ Cleanup skipped for %s: %s\n", payload.Polecat, nukeResult.Reason)
 	} else if nukeResult.Error != nil {
-		fmt.Fprintf(h.Output, "[Witness] [X] Cleanup failed for %s: %v\n", payload.Polecat, nukeResult.Error)
+		fmt.Fprintf(h.Output, "[Witness] ✗ Cleanup failed for %s: %v\n", payload.Polecat, nukeResult.Error)
+		return fmt.Errorf("cleanup failed for polecat %s: %w", payload.Polecat, nukeResult.Error)
 	} else {
-		fmt.Fprintf(h.Output, "[Witness] [OK] Polecat %s work merged, cleanup can proceed\n", payload.Polecat)
+		fmt.Fprintf(h.Output, "[Witness] ✓ Polecat %s work merged, cleanup can proceed\n", payload.Polecat)
 	}
 
 	return nil
@@ -91,10 +92,53 @@ func (h *DefaultWitnessHandler) HandleMergeFailed(payload *MergeFailedPayload) e
 	// Notify the polecat about the failure
 	if err := h.notifyPolecatFailed(payload); err != nil {
 		fmt.Fprintf(h.Output, "[Witness] Warning: failed to notify polecat: %v\n", err)
-		// Continue - notification is best-effort
+		// Continue - notification is best-effort, no cleanup to fail
 	}
 
-	fmt.Fprintf(h.Output, "[Witness] [X] Polecat %s merge failed, rework needed\n", payload.Polecat)
+	fmt.Fprintf(h.Output, "[Witness] ✗ Polecat %s merge failed, rework needed\n", payload.Polecat)
+
+	return nil
+}
+
+// HandlePolecatDone handles a POLECAT_DONE notification.
+// When a polecat signals completion, the Witness decides whether to register
+// the work for merge processing or skip it (for owned+direct convoys).
+//
+// For standard convoys: the merge pipeline proceeds normally (MR bead exists,
+// refinery will process it).
+//
+// For owned+direct convoys: the polecat already pushed to main and closed its
+// issue. The witness skips merge flow registration — only cleanup remains.
+func (h *DefaultWitnessHandler) HandlePolecatDone(payload *PolecatDonePayload) error {
+	_, _ = fmt.Fprintf(h.Output, "[Witness] POLECAT_DONE received for polecat %s\n", payload.Polecat)
+	_, _ = fmt.Fprintf(h.Output, "  Exit: %s\n", payload.ExitType)
+	if payload.Issue != "" {
+		_, _ = fmt.Fprintf(h.Output, "  Issue: %s\n", payload.Issue)
+	}
+	_, _ = fmt.Fprintf(h.Output, "  Branch: %s\n", payload.Branch)
+
+	if payload.SkipMergeFlow() {
+		_, _ = fmt.Fprintf(h.Output, "[Witness] ✓ Owned+direct convoy %s — merge flow skipped\n", payload.ConvoyID)
+		_, _ = fmt.Fprintf(h.Output, "  Polecat already pushed to main. Proceeding with cleanup only.\n")
+
+		// Initiate polecat cleanup (same as HandleMerged)
+		nukeResult := witness.AutoNukeIfClean(h.WorkDir, h.Rig, payload.Polecat)
+		if nukeResult.Nuked {
+			fmt.Fprintf(h.Output, "[Witness] ✓ Auto-nuked polecat %s: %s\n", payload.Polecat, nukeResult.Reason)
+		} else if nukeResult.Skipped {
+			fmt.Fprintf(h.Output, "[Witness] ⚠ Cleanup skipped for %s: %s\n", payload.Polecat, nukeResult.Reason)
+		} else if nukeResult.Error != nil {
+			fmt.Fprintf(h.Output, "[Witness] ✗ Cleanup failed for %s: %v\n", payload.Polecat, nukeResult.Error)
+		}
+
+		return nil
+	}
+
+	// Standard flow: log receipt, merge pipeline will handle the rest
+	if payload.MR != "" {
+		_, _ = fmt.Fprintf(h.Output, "  MR: %s\n", payload.MR)
+	}
+	_, _ = fmt.Fprintf(h.Output, "[Witness] ✓ Standard flow — Refinery will process MR\n")
 
 	return nil
 }
@@ -116,10 +160,10 @@ func (h *DefaultWitnessHandler) HandleReworkRequest(payload *ReworkRequestPayloa
 	// Notify the polecat about the rebase requirement
 	if err := h.notifyPolecatRebase(payload); err != nil {
 		fmt.Fprintf(h.Output, "[Witness] Warning: failed to notify polecat: %v\n", err)
-		// Continue - notification is best-effort
+		// Continue - notification is best-effort, no cleanup to fail
 	}
 
-	fmt.Fprintf(h.Output, "[Witness] [!] Polecat %s needs to rebase onto %s\n", payload.Polecat, payload.TargetBranch)
+	fmt.Fprintf(h.Output, "[Witness] ⚠ Polecat %s needs to rebase onto %s\n", payload.Polecat, payload.TargetBranch)
 
 	return nil
 }

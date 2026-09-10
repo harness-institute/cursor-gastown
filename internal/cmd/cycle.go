@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"fmt"
-	"os/exec"
 	"sort"
-	"strings"
 
 	"github.com/spf13/cobra"
+	sessionpkg "github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // cycleSession is the --session flag for cycle next/prev commands.
@@ -14,13 +14,21 @@ import (
 // correct, so we pass the session name explicitly via #{session_name} expansion.
 var cycleSession string
 
+// cycleClient is the --client flag for cycle next/prev commands.
+// When run from tmux run-shell, the spawned process has no client context,
+// so switch-client without -c may target the wrong client. Pass the client
+// TTY via #{client_tty} expansion to ensure the correct client is switched.
+var cycleClient string
+
 func init() {
 	rootCmd.AddCommand(cycleCmd)
 	cycleCmd.AddCommand(cycleNextCmd)
 	cycleCmd.AddCommand(cyclePrevCmd)
 
 	cycleNextCmd.Flags().StringVar(&cycleSession, "session", "", "Override current session (used by tmux binding)")
+	cycleNextCmd.Flags().StringVar(&cycleClient, "client", "", "Target client TTY (used by tmux binding, e.g. #{client_tty})")
 	cyclePrevCmd.Flags().StringVar(&cycleSession, "session", "", "Override current session (used by tmux binding)")
+	cyclePrevCmd.Flags().StringVar(&cycleClient, "client", "", "Target client TTY (used by tmux binding, e.g. #{client_tty})")
 }
 
 var cycleCmd = &cobra.Command{
@@ -30,11 +38,14 @@ var cycleCmd = &cobra.Command{
 
 Session groups:
 - Town sessions: Mayor ↔ Deacon
-- Crew sessions: All crew members in the same rig (e.g., greenplace/crew/max ↔ greenplace/crew/joe)
-- Rig infra sessions: Witness ↔ Refinery (per rig)
-- Polecat sessions: All polecats in the same rig (e.g., greenplace/Toast ↔ greenplace/Nux)
+- Crew sessions: All crew members in the same rig
+- Rig ops sessions: Witness + Refinery + Polecats in the same rig
 
-The appropriate cycling is detected automatically from the session name.`,
+The appropriate cycling is detected automatically from the session name.
+
+Examples:
+  gt cycle next    # Switch to next session in group
+  gt cycle prev    # Switch to previous session in group`,
 }
 
 var cycleNextCmd = &cobra.Command{
@@ -44,9 +55,13 @@ var cycleNextCmd = &cobra.Command{
 
 This command is typically invoked via the C-b n keybinding. It automatically
 detects whether you're in a town-level session (Mayor/Deacon) or a crew session
-and cycles within the appropriate group.`,
+and cycles within the appropriate group.
+
+Examples:
+  gt cycle next
+  gt cycle next --session gt-gastown-witness  # Explicit session context`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return cycleToSession(1, cycleSession)
+		return cycleToSession(1, cycleSession, cycleClient)
 	},
 }
 
@@ -57,16 +72,30 @@ var cyclePrevCmd = &cobra.Command{
 
 This command is typically invoked via the C-b p keybinding. It automatically
 detects whether you're in a town-level session (Mayor/Deacon) or a crew session
-and cycles within the appropriate group.`,
+and cycles within the appropriate group.
+
+Examples:
+  gt cycle prev
+  gt cycle prev --session gt-gastown-witness  # Explicit session context`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return cycleToSession(-1, cycleSession)
+		return cycleToSession(-1, cycleSession, cycleClient)
 	},
 }
 
 // cycleToSession dispatches to the appropriate cycling function based on session type.
 // direction: 1 for next, -1 for previous
 // sessionOverride: if non-empty, use this instead of detecting current session
-func cycleToSession(direction int, sessionOverride string) error {
+// clientOverride: if non-empty, pass as -c flag to tmux switch-client
+func cycleToSession(direction int, sessionOverride, clientOverride string) error {
+	// Override the default tmux socket to match the calling tmux server.
+	// PersistentPreRunE sets the socket to the town path hash (e.g., "gt-a1b2c3"), but
+	// cycle is invoked from tmux run-shell which may be on a different socket
+	// (e.g., "default"). Without this, switch-client silently fails because
+	// the sessions aren't on the town-named socket.
+	if socketName := tmux.SocketFromEnv(); socketName != "" {
+		tmux.SetDefaultSocket(socketName)
+	}
+
 	session := sessionOverride
 	if session == "" {
 		var err error
@@ -75,6 +104,9 @@ func cycleToSession(direction int, sessionOverride string) error {
 			return nil // Not in tmux, nothing to do
 		}
 	}
+
+	// Store client for use by cycleRigInfraSession
+	cycleClientTarget = clientOverride
 
 	// Check if it's a town-level session
 	townLevelSessions := getTownLevelSessions()
@@ -86,70 +118,60 @@ func cycleToSession(direction int, sessionOverride string) error {
 		}
 	}
 
-	// Check if it's a crew session (format: gt-<rig>-crew-<name>)
-	if strings.HasPrefix(session, "gt-") && strings.Contains(session, "-crew-") {
+	// Check if it's a crew session (format: <prefix>-crew-<name>)
+	if identity, err := sessionpkg.ParseSessionName(session); err == nil && identity.Role == sessionpkg.RoleCrew {
 		return cycleCrewSession(direction, session)
 	}
 
-	// Check if it's a rig infra session (witness or refinery)
-	if rig := parseRigInfraSession(session); rig != "" {
-		return cycleRigInfraSession(direction, session, rig)
-	}
-
-	// Check if it's a polecat session (gt-<rig>-<name>, not crew/witness/refinery)
-	if rig, _, ok := parsePolecatSessionName(session); ok && rig != "" {
-		return cyclePolecatSession(direction, session)
+	// Check if it's a rig ops session (witness, refinery, or polecat).
+	// These all share one cycle group per rig.
+	if rig := parseRigOpsSession(session); rig != "" {
+		return cycleRigOpsSession(direction, session, rig)
 	}
 
 	// Unknown session type - do nothing
 	return nil
 }
 
-// parseRigInfraSession extracts rig name if this is a witness or refinery session.
-// Returns empty string if not a rig infra session.
-// Format: gt-<rig>-witness or gt-<rig>-refinery
-func parseRigInfraSession(session string) string {
-	if !strings.HasPrefix(session, "gt-") {
+// parseRigOpsSession extracts the rig name if this is a witness, refinery, or
+// polecat session. Returns empty string if not a rig ops session.
+func parseRigOpsSession(sess string) string {
+	identity, err := sessionpkg.ParseSessionName(sess)
+	if err != nil {
 		return ""
 	}
-	rest := session[3:] // Remove "gt-" prefix
-
-	// Check for -witness or -refinery suffix
-	if strings.HasSuffix(rest, "-witness") {
-		return strings.TrimSuffix(rest, "-witness")
-	}
-	if strings.HasSuffix(rest, "-refinery") {
-		return strings.TrimSuffix(rest, "-refinery")
+	switch identity.Role {
+	case sessionpkg.RoleWitness, sessionpkg.RoleRefinery, sessionpkg.RolePolecat:
+		return identity.Rig
 	}
 	return ""
 }
 
-// cycleRigInfraSession cycles between witness and refinery sessions for a rig.
-func cycleRigInfraSession(direction int, currentSession, rig string) error {
-	// Find running infra sessions for this rig
-	witnessSession := fmt.Sprintf("gt-%s-witness", rig)
-	refinerySession := fmt.Sprintf("gt-%s-refinery", rig)
+// cycleClientTarget holds the client TTY to pass to switch-client -c.
+// Set by cycleToSession from the --client flag. When empty, switch-client
+// runs without -c (legacy behavior for backward compatibility).
+var cycleClientTarget string
 
-	var sessions []string
-	allSessions, err := listTmuxSessions()
-	if err != nil {
-		return err
+// resolveCurrentSession returns the current tmux session, using override if provided.
+func resolveCurrentSession(override string) (string, error) {
+	if override != "" {
+		return override, nil
 	}
+	return getCurrentTmuxSession()
+}
 
-	for _, s := range allSessions {
-		if s == witnessSession || s == refinerySession {
-			sessions = append(sessions, s)
-		}
-	}
-
+// cycleInGroup cycles between sessions in a sorted group.
+// direction: 1 for next, -1 for previous.
+// currentSession: the current tmux session name.
+// sessions: candidate sessions in the group (will be sorted).
+// Returns nil if there's nothing to switch to.
+func cycleInGroup(direction int, currentSession string, sessions []string) error {
 	if len(sessions) == 0 {
-		return nil // No infra sessions running
+		return nil
 	}
 
-	// Sort for consistent ordering
 	sort.Strings(sessions)
 
-	// Find current position
 	currentIdx := -1
 	for i, s := range sessions {
 		if s == currentSession {
@@ -162,21 +184,39 @@ func cycleRigInfraSession(direction int, currentSession, rig string) error {
 		return nil // Current session not in list
 	}
 
-	// Calculate target index (with wrapping)
 	targetIdx := (currentIdx + direction + len(sessions)) % len(sessions)
-
 	if targetIdx == currentIdx {
 		return nil // Only one session
 	}
 
-	// Switch to target session
-	cmd := exec.Command("tmux", "switch-client", "-t", sessions[targetIdx])
-	return cmd.Run()
+	args := []string{"switch-client"}
+	if cycleClientTarget != "" {
+		args = append(args, "-c", cycleClientTarget)
+	}
+	args = append(args, "-t", sessions[targetIdx])
+	return tmux.BuildCommand(args...).Run()
+}
+
+// cycleRigOpsSession cycles between witness, refinery, and polecat sessions for a rig.
+func cycleRigOpsSession(direction int, currentSession, rig string) error {
+	allSessions, err := listTmuxSessions()
+	if err != nil {
+		return fmt.Errorf("listing sessions: %w", err)
+	}
+
+	var sessions []string
+	for _, s := range allSessions {
+		if parseRigOpsSession(s) == rig {
+			sessions = append(sessions, s)
+		}
+	}
+
+	return cycleInGroup(direction, currentSession, sessions)
 }
 
 // listTmuxSessions returns all tmux session names.
 func listTmuxSessions() ([]string, error) {
-	out, err := exec.Command("tmux", "list-sessions", "-F", "#{session_name}").Output()
+	out, err := tmux.BuildCommand("list-sessions", "-F", "#{session_name}").Output()
 	if err != nil {
 		return nil, err
 	}

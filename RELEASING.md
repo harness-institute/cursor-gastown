@@ -1,243 +1,190 @@
-# Release Process for Gas Town
+# Releasing Gas Town
 
-This document describes the release process for Gas Town, including GitHub releases and npm packages.
+## Distribution Channels
 
-## Table of Contents
+| Channel | Mechanism | Automatic? |
+|---------|-----------|------------|
+| **GitHub Release** | GoReleaser via Actions on tag push | Yes |
+| **Homebrew tap** (`gastownhall/gastown`) | Actions writes an asset-based formula after archives upload | Yes |
+| **Homebrew core** (if listed) | Homebrew bot detects new release | Yes (24-48h delay) |
+| **npm** (`@gastown/gt`) | Actions workflow, OIDC trusted publishing | Yes (when org is set up) |
 
-- [Overview](#overview)
-- [Prerequisites](#prerequisites)
-- [Release Checklist](#release-checklist)
-- [1. Prepare Release](#1-prepare-release)
-- [2. GitHub Release](#2-github-release)
-- [3. npm Package Release](#3-npm-package-release)
-- [4. Verify Release](#4-verify-release)
-- [Hotfix Releases](#hotfix-releases)
+## How to Release
 
-## Overview
+### Option A: Automated (recommended)
 
-A Gas Town release involves multiple distribution channels:
-
-1. **GitHub Release** - Binary downloads for all platforms
-2. **npm** - Node.js package for cross-platform installation (`@cursorworkshop/cursor-gastown`)
-
-## Prerequisites
-
-### Required Tools
-
-- `git` with push access to cursorworkshop/cursor-gastown
-- `goreleaser` for building binaries
-- `npm` with authentication (for npm releases)
-- `gh` CLI (GitHub CLI, recommended)
-
-### Required Access
-
-- GitHub: Write access to repository and ability to create releases
-- npm: Publish access to `@cursorworkshop` organization
-
-### Verify Setup
+Use the release formula, which handles all steps:
 
 ```bash
-# Check git
-git remote -v  # Should show cursorworkshop/cursor-gastown
-
-# Check goreleaser
-goreleaser --version
-
-# Check GitHub CLI
-gh auth status
-
-# Check npm
-npm whoami  # Should show your npm username
+gt mol wisp create gastown-release --var version=X.Y.Z
 ```
 
-## Release Checklist
-
-Before starting a release:
-
-- [ ] All tests passing (`go test ./...`)
-- [ ] npm package tests passing (`cd npm-package && npm test`)
-- [ ] CHANGELOG.md updated with release notes
-- [ ] No uncommitted changes
-- [ ] On `main` branch and up to date with origin
-
-## 1. Prepare Release
-
-### Update CHANGELOG.md
-
-Add release notes to CHANGELOG.md following the Keep a Changelog format:
-
-```markdown
-## [0.2.0] - 2026-01-15
-
-### Added
-- New feature X
-
-### Changed
-- Improved Y
-
-### Fixed
-- Bug in Z
-```
-
-Commit the CHANGELOG changes:
+### Option B: Bump script
 
 ```bash
-git add CHANGELOG.md
-git commit -m "docs: Add CHANGELOG entry for v0.2.0"
-git push origin main
+cd gastown/mayor/rig
+./scripts/bump-version.sh X.Y.Z --commit --tag --push --install
 ```
 
-### Update Version
+### Option C: Manual
 
-Update version in relevant files:
-
-1. `internal/cmd/version.go` - CLI version constant
-2. `npm-package/package.json` - npm package version
+1. Update CHANGELOG.md `[Unreleased]` section
+2. Update `internal/cmd/info.go` `versionChanges` slice
+3. Run `./scripts/bump-version.sh X.Y.Z` (updates version.go, package.json, CHANGELOG header)
+4. Commit, tag, push:
 
 ```bash
-# Update versions
-vim internal/cmd/version.go
-vim npm-package/package.json
-
-# Commit
 git add -A
-git commit -m "chore: Bump version to 0.2.0"
+git commit -m "chore: Bump version to X.Y.Z"
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin main
+git push origin vX.Y.Z
 ```
 
-### Create Release Tag
+5. Rebuild locally:
 
 ```bash
-git tag -a v0.2.0 -m "Release v0.2.0"
-git push origin v0.2.0
+make install        # builds, codesigns, installs to ~/.local/bin
+gt daemon stop && gt daemon start
 ```
 
-This triggers GitHub Actions to build release artifacts automatically.
+## What Happens After Tag Push
 
-## 2. GitHub Release
+The `release.yml` workflow triggers automatically:
 
-### Using GoReleaser (Recommended)
+1. **Verify tag matches Version constant** — runs `make check-version-tag` and
+   aborts the release if the pushed tag (`vX.Y.Z`) doesn't match the `Version`
+   constant in `internal/cmd/version.go`. Prevents recurrence of
+   [#3459](https://github.com/gastownhall/gastown/issues/3459) where v0.13.0
+   shipped reporting 0.12.1.
+2. **goreleaser** job builds binaries for all platforms and creates the GitHub Release
+3. **update-homebrew-formula** job writes an asset-based formula to `gastownhall/homebrew-gastown` when tap credentials are configured
+4. **publish-npm** job publishes to npm (best-effort, `continue-on-error: true`)
 
-GoReleaser automates binary building and GitHub release creation:
+Manual dispatch is only for rerunning a release from a `v*` tag. Publishing jobs are guarded to skip branch refs.
+
+### Running the tag/version check locally
 
 ```bash
-# Clean any previous builds
-rm -rf dist/
-
-# Create release (uses GITHUB_TOKEN from gh CLI)
-GITHUB_TOKEN=$(gh auth token) goreleaser release --clean
+make check-version-tag
 ```
 
-This will:
-- Build binaries for all platforms (macOS, Linux, Windows - amd64/arm64)
-- Create checksums
-- Generate release notes from CHANGELOG.md
-- Upload everything to GitHub releases
+The target is a no-op on untagged HEADs, so it's safe to run on any checkout.
+It only fails when HEAD is tagged `vX.Y.Z` and the `Version` constant doesn't
+match. Run it after `scripts/bump-version.sh` and before pushing the tag if you
+want to catch drift before CI does.
 
-### Verify GitHub Release
+## Homebrew tap (`gastownhall/gastown`)
 
-1. Visit https://github.com/cursorworkshop/cursor-gastown/releases
-2. Verify the new version is marked as "Latest"
-3. Check all platform binaries are present
+The release workflow automatically overwrites `Formula/gastown.rb` in the `gastownhall/homebrew-gastown` repo on every tag push. It prefers the GitHub App credentials `HOMEBREW_TAP_APP_ID` and `HOMEBREW_TAP_APP_PRIVATE_KEY`, and falls back to `HOMEBREW_TAP_TOKEN` if present.
 
-## 3. npm Package Release
-
-The npm package wraps the native binary for Node.js environments.
-
-### Test Installation Locally
+The tap formula installs prebuilt release assets:
 
 ```bash
-cd npm-package
-
-# Run tests (requires a local binary in npm-package/bin)
-npm test
-
-# Pack and test install
-npm pack
-npm install -g ./cursorworkshop-cursor-gastown-0.2.0.tgz
-gt version  # Should show 0.2.0
-
-# Cleanup
-npm uninstall -g @cursorworkshop/cursor-gastown
-rm cursorworkshop-cursor-gastown-0.2.0.tgz
+brew install gastownhall/gastown/gastown
 ```
 
-### Publish to npm
+The normal user-facing Homebrew path remains homebrew-core:
 
 ```bash
-# IMPORTANT: Ensure GitHub release with binaries is live first!
-cd npm-package
-npm publish --access public --otp=<code>
+brew install gastown
 ```
 
-### Verify npm Release
+## Homebrew core
+
+If Gastown is listed in **homebrew-core**, the formula lives at:
+`https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/g/gastown.rb`
+
+### How it updates
+
+Homebrew's `BrewTestBot` automatically detects new GitHub releases and opens
+a PR to homebrew-core. Gastown is on the autobump list — the bot checks
+**every ~3 hours**.
+
+### If the bot doesn't pick it up
+
+Gastown is on the autobump list, so `brew bump-formula-pr` will refuse to
+submit a manual PR. If the bot hasn't updated after 6+ hours, check
+https://github.com/Homebrew/homebrew-core/pulls?q=gastown for stuck PRs.
+
+### Verifying
 
 ```bash
-npm install -g @cursorworkshop/cursor-gastown
-
-# If you are in CI, the postinstall step skips binary download.
-# For a local verification, ensure CI is not set.
-CI= npm install -g @cursorworkshop/cursor-gastown
-
-gt version  # Should show 0.2.0
+brew update
+brew info gastown    # Check version
+brew upgrade gastown # Upgrade if installed
 ```
 
-## 4. Verify Release
+## npm (`@gastown/gt`)
 
-After all channels are updated:
+### How it works
 
-### GitHub
+The workflow uses **OIDC trusted publishing** (npm provenance). No NPM_TOKEN
+secret is needed — the `id-token: write` permission on the job generates a
+short-lived OIDC token that npm trusts because the GitHub repo is linked to
+the npm package.
+
+### Prerequisites
+
+The `@gastown` npm organization must exist and be linked to this repo:
+
+1. Go to https://www.npmjs.com and create (or join) the `@gastown` org
+2. Under org settings, enable "Require 2FA" and configure trusted publishing
+3. Link `gastownhall/gastown` as a trusted publisher for `@gastown/gt`
+
+### Current status (as of 2026-03-06)
+
+The `@gastown` npm org was secured by a community member (Ivan Casco Valero,
+ivan@ivancasco.com) to prevent scope squatting. Ownership transfer is pending.
+Until the org is transferred, npm publish will fail gracefully without blocking
+the release (`continue-on-error: true` in the workflow).
+
+### Verifying
 
 ```bash
-# Download and test binary
-curl -LO https://github.com/cursorworkshop/cursor-gastown/releases/download/v0.2.0/cursor-gastown_0.2.0_darwin_arm64.tar.gz
-tar -xzf cursor-gastown_0.2.0_darwin_arm64.tar.gz
-./gt version
-```
-
-### npm
-
-```bash
-npm install -g @cursorworkshop/cursor-gastown
+npm view @gastown/gt version
+npm install -g @gastown/gt
 gt version
 ```
 
-## Hotfix Releases
+## Files Updated During Release
 
-For urgent bug fixes:
+| File | What changes |
+|------|-------------|
+| `CHANGELOG.md` | New version section with date |
+| `internal/cmd/info.go` | `versionChanges` entry for `gt info --whats-new` |
+| `internal/cmd/version.go` | `Version` constant |
+| `npm-package/package.json` | `version` field |
+| `flake.nix` | version + vendorHash (only if `nix` is in PATH) |
+| `gastownhall/homebrew-gastown/Formula/gastown.rb` | asset URLs + `sha256` updated by release workflow |
 
-```bash
-# Create hotfix branch from tag
-git checkout -b hotfix/v0.2.1 v0.2.0
+## Troubleshooting
 
-# Make fixes and bump version
-# ... edit files ...
+### GoReleaser fails with "replace directives"
 
-# Commit, tag, and release
-git add -A
-git commit -m "fix: Critical bug fix"
-git tag -a v0.2.1 -m "Hotfix release v0.2.1"
-git push origin hotfix/v0.2.1
-git push origin v0.2.1
+The workflow rejects `go.mod` files with `replace` directives (they break
+`go install`). Remove the replace directive and commit before tagging.
 
-# Follow normal release process
-GITHUB_TOKEN=$(gh auth token) goreleaser release --clean
+### npm publish returns 404
 
-# Merge back to main
-git checkout main
-git merge hotfix/v0.2.1
-git push origin main
-```
+The `@gastown` npm org doesn't exist or you don't have publish access.
+See the npm section above. The release still succeeds — npm is best-effort.
 
-## Version Numbering
+### Homebrew shows old version after a release
 
-Gas Town follows [Semantic Versioning](https://semver.org/):
+For the `gastownhall/gastown` tap, check the `update-homebrew-formula` job and
+the tap's `Formula/gastown.rb` commit history. For homebrew-core, check
+https://github.com/Homebrew/homebrew-core/pulls?q=gastown for stuck BrewTestBot
+PRs. Manual `brew bump-formula-pr` is blocked for autobump formulae.
 
-- **MAJOR** (x.0.0): Breaking changes
-- **MINOR** (0.x.0): New features, backwards compatible
-- **PATCH** (0.0.x): Bug fixes, backwards compatible
+### `make install` shows `-dirty` suffix
 
-## Questions?
+The `.beads/` directory has unstaged changes. This is cosmetic — the version
+number is correct. The `-dirty` comes from `git describe` seeing any unstaged
+modifications.
 
-- Open an issue: https://github.com/cursorworkshop/cursor-gastown/issues
-- Check existing releases: https://github.com/cursorworkshop/cursor-gastown/releases
+### Version in version.go is still old after bump script
+
+The bump script reads the current version from version.go and replaces it.
+If version.go was manually edited to a different version, the script's sed
+pattern won't match. Fix version.go manually and re-run.

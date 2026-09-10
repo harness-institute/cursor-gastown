@@ -6,22 +6,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"sort"
-	"strings"
-	"time"
+	"sync"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
-// convoyIDPattern validates convoy IDs to prevent SQL injection.
+// convoyIDPattern validates convoy IDs.
 var convoyIDPattern = regexp.MustCompile(`^hq-[a-zA-Z0-9-]+$`)
-
-// subprocessTimeout is the timeout for bd and sqlite3 calls.
-const subprocessTimeout = 5 * time.Second
 
 // IssueItem represents a tracked issue within a convoy.
 type IssueItem struct {
@@ -53,11 +52,16 @@ type Model struct {
 	showHelp bool
 	width    int
 	height   int
+
+	// mu protects all fields read by View() from concurrent access:
+	// convoys, cursor, err, showHelp, help, width, height.
+	// Write lock is held during Update mutations; read lock during View/render.
+	mu sync.RWMutex
 }
 
 // New creates a new convoy TUI model.
-func New(townBeads string) Model {
-	return Model{
+func New(townBeads string) *Model {
+	return &Model{
 		townBeads: townBeads,
 		keys:      DefaultKeyMap(),
 		help:      help.New(),
@@ -66,7 +70,7 @@ func New(townBeads string) Model {
 }
 
 // Init initializes the model.
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
 	return m.fetchConvoys
 }
 
@@ -77,19 +81,20 @@ type fetchConvoysMsg struct {
 }
 
 // fetchConvoys fetches convoy data from beads.
-func (m Model) fetchConvoys() tea.Msg {
+func (m *Model) fetchConvoys() tea.Msg {
 	convoys, err := loadConvoys(m.townBeads)
 	return fetchConvoysMsg{convoys: convoys, err: err}
 }
 
 // loadConvoys loads convoy data from the beads directory.
 func loadConvoys(townBeads string) ([]ConvoyItem, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), subprocessTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.BdSubprocessTimeout)
 	defer cancel()
 
-	// Get list of open convoys
-	listArgs := []string{"list", "--type=convoy", "--json"}
+	// Get list of open issues and filter locally so legacy type=convoy beads remain visible.
+	listArgs := []string{"list", "--json", "--limit=0"}
 	listCmd := exec.CommandContext(ctx, "bd", listArgs...)
+	util.SetDetachedProcessGroup(listCmd)
 	listCmd.Dir = townBeads
 	var stdout bytes.Buffer
 	listCmd.Stdout = &stdout
@@ -99,9 +104,11 @@ func loadConvoys(townBeads string) ([]ConvoyItem, error) {
 	}
 
 	var rawConvoys []struct {
-		ID     string `json:"id"`
-		Title  string `json:"title"`
-		Status string `json:"status"`
+		ID        string   `json:"id"`
+		Title     string   `json:"title"`
+		Status    string   `json:"status"`
+		IssueType string   `json:"issue_type"`
+		Labels    []string `json:"labels"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &rawConvoys); err != nil {
 		return nil, fmt.Errorf("parsing convoy list: %w", err)
@@ -109,6 +116,9 @@ func loadConvoys(townBeads string) ([]ConvoyItem, error) {
 
 	convoys := make([]ConvoyItem, 0, len(rawConvoys))
 	for _, rc := range rawConvoys {
+		if rc.IssueType != "convoy" && !tuiConvoyHasLabel(rc.Labels, "gt:convoy") {
+			continue
+		}
 		issues, completed, total := loadTrackedIssues(townBeads, rc.ID)
 		convoys = append(convoys, ConvoyItem{
 			ID:       rc.ID,
@@ -123,26 +133,29 @@ func loadConvoys(townBeads string) ([]ConvoyItem, error) {
 	return convoys, nil
 }
 
+func tuiConvoyHasLabel(labels []string, target string) bool {
+	for _, label := range labels {
+		if label == target {
+			return true
+		}
+	}
+	return false
+}
+
 // loadTrackedIssues loads issues tracked by a convoy.
 func loadTrackedIssues(townBeads, convoyID string) ([]IssueItem, int, int) {
-	// Validate convoy ID to prevent SQL injection
+	// Validate convoy ID for safety
 	if !convoyIDPattern.MatchString(convoyID) {
 		return nil, 0, 0
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), subprocessTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.BdSubprocessTimeout)
 	defer cancel()
 
-	dbPath := filepath.Join(townBeads, "beads.db")
-
-	// Query tracked issues from SQLite (ID validated above)
-	query := fmt.Sprintf(`
-		SELECT d.depends_on_id
-		FROM dependencies d
-		WHERE d.issue_id = '%s' AND d.type = 'tracks'
-	`, convoyID)
-
-	cmd := exec.CommandContext(ctx, "sqlite3", "-json", dbPath, query) //nolint:gosec // G204: sqlite3 with controlled query
+	// Query tracked issues using bd dep list (returns full issue details)
+	cmd := exec.CommandContext(ctx, "bd", "dep", "list", convoyID, "-t", "tracks", "--json")
+	util.SetDetachedProcessGroup(cmd)
+	cmd.Dir = townBeads
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 
@@ -150,37 +163,37 @@ func loadTrackedIssues(townBeads, convoyID string) ([]IssueItem, int, int) {
 		return nil, 0, 0
 	}
 
-	var deps []struct {
-		DependsOnID string `json:"depends_on_id"`
+	var tracked []struct {
+		ID     string `json:"id"`
+		Title  string `json:"title"`
+		Status string `json:"status"`
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &deps); err != nil {
+	if err := json.Unmarshal(stdout.Bytes(), &tracked); err != nil {
 		return nil, 0, 0
 	}
 
-	// Collect issue IDs, handling external references
-	issueIDs := make([]string, 0, len(deps))
-	for _, dep := range deps {
-		issueID := dep.DependsOnID
-		if strings.HasPrefix(issueID, "external:") {
-			parts := strings.SplitN(issueID, ":", 3)
-			if len(parts) == 3 {
-				issueID = parts[2]
-			}
-		}
-		issueIDs = append(issueIDs, issueID)
+	// Extract raw issue IDs and refresh status via cross-rig lookup.
+	// bd dep list returns status from the dependency record in HQ beads
+	// which is never updated when cross-rig issues are closed in their rig.
+	for i := range tracked {
+		tracked[i].ID = beads.ExtractIssueID(tracked[i].ID)
 	}
+	freshStatus := refreshIssueStatus(ctx, tracked)
 
-	// Batch fetch all issue details in one call
-	detailsMap := getIssueDetailsBatch(townBeads, issueIDs)
-
-	issues := make([]IssueItem, 0, len(deps))
+	issues := make([]IssueItem, 0, len(tracked))
 	completed := 0
-	for _, id := range issueIDs {
-		if issue, ok := detailsMap[id]; ok {
-			issues = append(issues, issue)
-			if issue.Status == "closed" {
-				completed++
-			}
+	for _, t := range tracked {
+		status := t.Status
+		if fresh, ok := freshStatus[t.ID]; ok {
+			status = fresh
+		}
+		issues = append(issues, IssueItem{
+			ID:     t.ID,
+			Title:  t.Title,
+			Status: status,
+		})
+		if status == "closed" {
+			completed++
 		}
 	}
 
@@ -195,62 +208,63 @@ func loadTrackedIssues(townBeads, convoyID string) ([]IssueItem, int, int) {
 	return issues, completed, len(issues)
 }
 
-// getIssueDetailsBatch fetches details for multiple issues in a single bd show call.
-// Returns a map from issue ID to details.
-func getIssueDetailsBatch(townBeads string, issueIDs []string) map[string]IssueItem {
-	result := make(map[string]IssueItem)
-	if len(issueIDs) == 0 {
-		return result
+// refreshIssueStatus does a batch bd show to get current status for tracked issues.
+// Returns a map from issue ID to current status.
+func refreshIssueStatus(ctx context.Context, tracked []struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Status string `json:"status"`
+}) map[string]string {
+	if len(tracked) == 0 {
+		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), subprocessTimeout)
-	defer cancel()
-
-	// Build args: bd show id1 id2 id3 ... --json
-	args := append([]string{"show"}, issueIDs...)
+	args := []string{"show"}
+	for _, t := range tracked {
+		args = append(args, t.ID)
+	}
 	args = append(args, "--json")
 
-	cmd := exec.CommandContext(ctx, "bd", args...) //nolint:gosec // G204: bd is a trusted internal tool
-	cmd.Dir = townBeads
+	cmd := exec.CommandContext(ctx, "bd", args...)
+	util.SetDetachedProcessGroup(cmd)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 
 	if err := cmd.Run(); err != nil {
-		return result // Return empty map on error
+		return nil
 	}
 
 	var issues []struct {
 		ID     string `json:"id"`
-		Title  string `json:"title"`
 		Status string `json:"status"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &issues); err != nil {
-		return result
+		return nil
 	}
 
+	result := make(map[string]string, len(issues))
 	for _, issue := range issues {
-		result[issue.ID] = IssueItem{
-			ID:     issue.ID,
-			Title:  issue.Title,
-			Status: issue.Status,
-		}
+		result[issue.ID] = issue.Status
 	}
-
 	return result
 }
 
 // Update handles messages.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		m.mu.Lock()
 		m.width = msg.Width
 		m.height = msg.Height
 		m.help.Width = msg.Width
+		m.mu.Unlock()
 		return m, nil
 
 	case fetchConvoysMsg:
+		m.mu.Lock()
 		m.err = msg.err
 		m.convoys = msg.convoys
+		m.mu.Unlock()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -259,40 +273,54 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case key.Matches(msg, m.keys.Help):
+			m.mu.Lock()
 			m.showHelp = !m.showHelp
+			m.mu.Unlock()
 			return m, nil
 
 		case key.Matches(msg, m.keys.Up):
+			m.mu.Lock()
 			if m.cursor > 0 {
 				m.cursor--
 			}
+			m.mu.Unlock()
 			return m, nil
 
 		case key.Matches(msg, m.keys.Down):
-			max := m.maxCursor()
+			m.mu.Lock()
+			max := m.maxCursorLocked()
 			if m.cursor < max {
 				m.cursor++
 			}
+			m.mu.Unlock()
 			return m, nil
 
 		case key.Matches(msg, m.keys.Top):
+			m.mu.Lock()
 			m.cursor = 0
+			m.mu.Unlock()
 			return m, nil
 
 		case key.Matches(msg, m.keys.Bottom):
-			m.cursor = m.maxCursor()
+			m.mu.Lock()
+			m.cursor = m.maxCursorLocked()
+			m.mu.Unlock()
 			return m, nil
 
 		case key.Matches(msg, m.keys.Toggle):
-			m.toggleExpand()
+			m.mu.Lock()
+			m.toggleExpandLocked()
+			m.mu.Unlock()
 			return m, nil
 
 		// Number keys for direct convoy access
 		case msg.String() >= "1" && msg.String() <= "9":
 			n := int(msg.String()[0] - '0')
+			m.mu.Lock()
 			if n <= len(m.convoys) {
-				m.jumpToConvoy(n - 1)
+				m.jumpToConvoyLocked(n - 1)
 			}
+			m.mu.Unlock()
 			return m, nil
 		}
 	}
@@ -300,8 +328,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// maxCursor returns the maximum valid cursor position.
-func (m Model) maxCursor() int {
+// maxCursorLocked returns the maximum valid cursor position.
+// Caller must hold m.mu (read or write).
+func (m *Model) maxCursorLocked() int {
 	count := 0
 	for _, c := range m.convoys {
 		count++ // convoy itself
@@ -315,9 +344,10 @@ func (m Model) maxCursor() int {
 	return count - 1
 }
 
-// cursorToConvoyIndex returns the convoy index and issue index for the current cursor.
+// cursorToConvoyIndexLocked returns the convoy index and issue index for the current cursor.
 // Returns (convoyIdx, issueIdx) where issueIdx is -1 if on a convoy row.
-func (m Model) cursorToConvoyIndex() (int, int) {
+// Caller must hold m.mu (read or write).
+func (m *Model) cursorToConvoyIndexLocked() (int, int) {
 	pos := 0
 	for ci, c := range m.convoys {
 		if pos == m.cursor {
@@ -336,17 +366,19 @@ func (m Model) cursorToConvoyIndex() (int, int) {
 	return -1, -1
 }
 
-// toggleExpand toggles expansion of the convoy at the current cursor.
-func (m *Model) toggleExpand() {
-	ci, ii := m.cursorToConvoyIndex()
+// toggleExpandLocked toggles expansion of the convoy at the current cursor.
+// Caller must hold m.mu write lock.
+func (m *Model) toggleExpandLocked() {
+	ci, ii := m.cursorToConvoyIndexLocked()
 	if ci >= 0 && ii == -1 {
 		// On a convoy row, toggle it
 		m.convoys[ci].Expanded = !m.convoys[ci].Expanded
 	}
 }
 
-// jumpToConvoy moves the cursor to a specific convoy by index.
-func (m *Model) jumpToConvoy(convoyIdx int) {
+// jumpToConvoyLocked moves the cursor to a specific convoy by index.
+// Caller must hold m.mu write lock.
+func (m *Model) jumpToConvoyLocked(convoyIdx int) {
 	if convoyIdx < 0 || convoyIdx >= len(m.convoys) {
 		return
 	}
@@ -364,6 +396,9 @@ func (m *Model) jumpToConvoy(convoyIdx int) {
 }
 
 // View renders the model.
-func (m Model) View() string {
+// Acquires read lock to safely access all View-visible fields.
+func (m *Model) View() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.renderView()
 }

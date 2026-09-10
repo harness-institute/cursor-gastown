@@ -2,17 +2,25 @@
 package beads
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/harness-institute/cursor-gastown/internal/lock"
 )
 
-// StatusPinned is the status for pinned beads that never get closed.
-// These are "domain table" beads like role definitions that persist permanently.
-const StatusPinned = "pinned"
+// Issue status constants kept as untyped strings for backward compatibility.
+// The typed versions (IssueStatus) are in status.go.
+const (
+	// StatusPinned is the status for pinned beads that never get closed.
+	StatusPinned = "pinned"
 
-// StatusHooked is the status for beads on an agent's hook (work assignment).
-// This is distinct from pinned - hooked beads are active work, not permanent records.
-const StatusHooked = "hooked"
+	// StatusHooked is the status for beads on an agent's hook (work assignment).
+	StatusHooked = "hooked"
+)
 
 // HandoffBeadTitle returns the well-known title for a role's handoff bead.
 func HandoffBeadTitle(role string) string {
@@ -37,6 +45,27 @@ func (b *Beads) FindHandoffBead(role string) (*Issue, error) {
 	return nil, nil
 }
 
+// FindAllHandoffBeads fetches all pinned beads once and returns a map from
+// role name to handoff bead. This avoids the N+1 subprocess problem where
+// FindHandoffBead is called once per agent, each spawning a bd subprocess.
+func (b *Beads) FindAllHandoffBeads() (map[string]*Issue, error) {
+	issues, err := b.List(ListOptions{Status: StatusPinned, Priority: -1})
+	if err != nil {
+		return nil, fmt.Errorf("listing pinned issues: %w", err)
+	}
+
+	result := make(map[string]*Issue)
+	for _, issue := range issues {
+		// Handoff bead titles follow the pattern "<role> Handoff"
+		if strings.HasSuffix(issue.Title, " Handoff") {
+			role := strings.TrimSuffix(issue.Title, " Handoff")
+			result[role] = issue
+		}
+	}
+
+	return result, nil
+}
+
 // GetOrCreateHandoffBead returns the handoff bead for a role, creating it if needed.
 func (b *Beads) GetOrCreateHandoffBead(role string) (*Issue, error) {
 	// Check if it exists
@@ -48,10 +77,9 @@ func (b *Beads) GetOrCreateHandoffBead(role string) (*Issue, error) {
 		return existing, nil
 	}
 
-	// Create new handoff bead
 	issue, err := b.Create(CreateOptions{
 		Title:       HandoffBeadTitle(role),
-		Type:        "task",
+		Labels:      []string{"gt:task"},
 		Priority:    2,
 		Description: "", // Empty until first handoff
 		Actor:       role,
@@ -60,13 +88,17 @@ func (b *Beads) GetOrCreateHandoffBead(role string) (*Issue, error) {
 		return nil, fmt.Errorf("creating handoff bead: %w", err)
 	}
 
-	// Update to pinned status
+	// Update to pinned status. If this fails, clean up the orphaned bead
+	// to prevent duplicates on retry (FindHandoffBead only searches pinned beads).
 	status := StatusPinned
 	if err := b.Update(issue.ID, UpdateOptions{Status: &status}); err != nil {
+		// Best-effort cleanup — ignore delete error since pin failure is the real problem
+		_ = b.CloseWithReason("orphaned: failed to pin", issue.ID)
 		return nil, fmt.Errorf("setting handoff bead to pinned: %w", err)
 	}
 
-	// Re-fetch to get updated status
+	// Re-fetch to get updated status. If this fails, the bead is already
+	// created and pinned — a retry of GetOrCreateHandoffBead will find it.
 	return b.Show(issue.ID)
 }
 
@@ -107,7 +139,7 @@ func (b *Beads) ClearMail(reason string) (*ClearMailResult, error) {
 	// List all open messages
 	issues, err := b.List(ListOptions{
 		Status:   "open",
-		Type:     "message",
+		Label:    "gt:message",
 		Priority: -1,
 	})
 	if err != nil {
@@ -136,28 +168,82 @@ func (b *Beads) ClearMail(reason string) (*ClearMailResult, error) {
 		result.Closed = len(toClose)
 	}
 
-	// Clear pinned messages
+	// Clear pinned messages — continue on error so partial progress isn't lost
 	empty := ""
+	var clearErrs []error
 	for _, issue := range toClear {
 		if err := b.Update(issue.ID, UpdateOptions{Description: &empty}); err != nil {
-			return nil, fmt.Errorf("clearing pinned message %s: %w", issue.ID, err)
+			clearErrs = append(clearErrs, fmt.Errorf("clearing pinned message %s: %w", issue.ID, err))
+			continue
 		}
 		result.Cleared++
+	}
+
+	if len(clearErrs) > 0 {
+		return result, fmt.Errorf("partial failure clearing %d/%d pinned messages: %w",
+			len(clearErrs), len(toClear), errors.Join(clearErrs...))
 	}
 
 	return result, nil
 }
 
+// CloseStaleHookedMailBeads closes any gt:message beads in status=hooked assigned
+// to agentID. Called before creating a new handoff mail to prevent accumulation of
+// stale beads across sessions. Returns the number of beads closed. (GH#3859)
+func (b *Beads) CloseStaleHookedMailBeads(agentID string) (int, error) {
+	hooked, err := b.List(ListOptions{
+		Status:   StatusHooked,
+		Label:    "gt:message",
+		Assignee: agentID,
+		Priority: -1,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("listing hooked mail beads: %w", err)
+	}
+	if len(hooked) == 0 {
+		return 0, nil
+	}
+	ids := make([]string, len(hooked))
+	for i, h := range hooked {
+		ids[i] = h.ID
+	}
+	if err := b.ForceCloseWithReason("handoff: superseded by new session", ids...); err != nil {
+		return 0, err
+	}
+	return len(ids), nil
+}
+
+// lockBead acquires a cross-process advisory lock for a bead operation.
+// Returns a cleanup function that releases the lock.
+// Lock files are stored in <beadsDir>/locks/<beadID>.flock.
+func (b *Beads) lockBead(beadID string) (func(), error) {
+	locksDir := filepath.Join(b.getResolvedBeadsDir(), "locks")
+	if err := os.MkdirAll(locksDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating locks directory: %w", err)
+	}
+	lockPath := filepath.Join(locksDir, beadID+".flock")
+	return lock.FlockAcquire(lockPath)
+}
+
 // AttachMolecule attaches a molecule to a pinned bead by updating its description.
 // The moleculeID is the root issue ID of the molecule to attach.
+// Uses advisory file locking to prevent concurrent read-modify-write races.
 // Returns the updated issue.
 func (b *Beads) AttachMolecule(pinnedBeadID, moleculeID string) (*Issue, error) {
+	// Acquire per-bead lock to serialize concurrent attach/detach operations
+	unlock, err := b.lockBead(pinnedBeadID)
+	if err != nil {
+		return nil, fmt.Errorf("acquiring bead lock: %w", err)
+	}
+	defer unlock()
+
 	// Fetch the pinned bead
 	issue, err := b.Show(pinnedBeadID)
 	if err != nil {
 		return nil, fmt.Errorf("fetching pinned bead: %w", err)
 	}
 
+	// Only allow pinned beads (permanent records like role definitions)
 	if issue.Status != StatusPinned {
 		return nil, fmt.Errorf("issue %s is not pinned (status: %s)", pinnedBeadID, issue.Status)
 	}
@@ -181,8 +267,16 @@ func (b *Beads) AttachMolecule(pinnedBeadID, moleculeID string) (*Issue, error) 
 }
 
 // DetachMolecule removes molecule attachment from a pinned bead.
+// Uses advisory file locking to prevent concurrent read-modify-write races.
 // Returns the updated issue.
 func (b *Beads) DetachMolecule(pinnedBeadID string) (*Issue, error) {
+	// Acquire per-bead lock to serialize concurrent attach/detach operations
+	unlock, err := b.lockBead(pinnedBeadID)
+	if err != nil {
+		return nil, fmt.Errorf("acquiring bead lock: %w", err)
+	}
+	defer unlock()
+
 	// Fetch the pinned bead
 	issue, err := b.Show(pinnedBeadID)
 	if err != nil {

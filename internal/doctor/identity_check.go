@@ -4,24 +4,24 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/lock"
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/lock"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // IdentityCollisionCheck checks for agent identity collisions and stale locks.
-type IdentityCollisionCheck struct{}
+type IdentityCollisionCheck struct {
+	BaseCheck
+}
 
 // NewIdentityCollisionCheck creates a new identity collision check.
 func NewIdentityCollisionCheck() *IdentityCollisionCheck {
-	return &IdentityCollisionCheck{}
-}
-
-func (c *IdentityCollisionCheck) Name() string {
-	return "identity-collision"
-}
-
-func (c *IdentityCollisionCheck) Description() string {
-	return "Check for agent identity collisions and stale locks"
+	return &IdentityCollisionCheck{
+		BaseCheck: BaseCheck{
+			CheckName:        "identity-collision",
+			CheckDescription: "Check for agent identity collisions and stale locks",
+			CheckCategory:    CategoryInfrastructure,
+		},
+	}
 }
 
 func (c *IdentityCollisionCheck) CanFix() bool {
@@ -81,14 +81,14 @@ func (c *IdentityCollisionCheck) Run(ctx *CheckContext) *CheckResult {
 	for workerDir, info := range locks {
 		// First check if the session exists in tmux - that's the real indicator
 		// of whether the worker is alive. The PID in the lock is the spawning
-		// process, which may have exited even though the agent is still running.
+		// process, which may have exited even though Claude is still running.
 		sessionExists := info.SessionID != "" && sessionSet[info.SessionID]
 
 		if info.IsStale() {
 			// PID is dead - but is the session still alive?
 			if sessionExists {
 				// Session exists, so the worker is alive despite dead PID.
-				// This is normal - the spawner exits after launching the agent.
+				// This is normal - the spawner exits after launching Claude.
 				healthyLocks++
 				continue
 			}

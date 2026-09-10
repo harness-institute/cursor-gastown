@@ -1,7 +1,7 @@
 {
-  "name": "@cursorworkshop/cursor-gastown",
-  "version": "0.1.1",
-  "description": "Gas Town CLI - multi-agent workspace manager with native binary support",
+  "name": "@harness-institute/cursor-gastown",
+  "version": "1.2.1",
+  "description": "Cursor Gas Town CLI - multi-agent workspace manager for Cursor Agent (fork of Gas Town)",
   "main": "bin/gt.js",
   "bin": {
     "gt": "bin/gt.js"
@@ -15,20 +15,22 @@
     "workspace-manager",
     "ai-agent",
     "coding-agent",
+    "cursor",
+    "cursor-agent",
     "git",
     "orchestration"
   ],
-  "author": "Steve Yegge",
+  "author": "Harness Institute",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/cursorworkshop/cursor-gastown.git",
+    "url": "https://github.com/harness-institute/cursor-gastown.git",
     "directory": "npm-package"
   },
   "bugs": {
-    "url": "https://github.com/cursorworkshop/cursor-gastown/issues"
+    "url": "https://github.com/harness-institute/cursor-gastown/issues"
   },
-  "homepage": "https://github.com/cursorworkshop/cursor-gastown#readme",
+  "homepage": "https://github.com/harness-institute/cursor-gastown#readme",
   "engines": {
     "node": ">=14.0.0"
   },

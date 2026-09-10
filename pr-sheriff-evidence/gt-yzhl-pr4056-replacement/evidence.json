@@ -1,0 +1,235 @@
+{
+  "schema_version": "pr-sheriff-evidence/v1",
+  "policy_version": "pr-sheriff-policy/v1.1",
+  "generated_at": "2026-07-07T19:53:06Z",
+  "run_id": "gt-yzhl-pr4056-replacement",
+  "subject": {
+    "forge": "github",
+    "repo_id": "Bella-Giraffety/gastown",
+    "default_branch": "main",
+    "change_type": "pull_request",
+    "change_id": "gt-yzhl-replacement-for-4056",
+    "url": "https://github.com/Bella-Giraffety/gastown/compare/main...polecat/pipboy/gt-yzhl@8e9ea7",
+    "title": "Fix dog mail routing from PR #4056 with focused current-main replacement",
+    "author": "adensur/Maksim",
+    "author_tier": "known",
+    "draft": false,
+    "base_ref": "main",
+    "base_sha": "cb098cb41fad86817ecf6bd0c6ce287ca5f59553",
+    "head_ref": "polecat/pipboy/gt-yzhl@8e9ea7",
+    "head_sha": "1851d44300650595606b1be42b15a8ad27c5be7d",
+    "diff_summary": {
+      "additions": 367,
+      "deletions": 23,
+      "changed_files": 8,
+      "paths": [
+        "internal/cmd/dnd_test.go",
+        "internal/cmd/nudge.go",
+        "internal/cmd/nudge_test.go",
+        "internal/mail/dog_address.go",
+        "internal/mail/resolve.go",
+        "internal/mail/resolve_test.go",
+        "internal/mail/router.go",
+        "internal/mail/router_test.go"
+      ]
+    }
+  },
+  "repo_policy": {
+    "label_aliases": [],
+    "feature_kind_values": ["feature", "enhancement"],
+    "merge_ready_status_values": ["review-approved", "merge-ready"],
+    "approver_roles": ["maintainer", "owner", "mayor"],
+    "evidence_locations": ["local_report", "beads_notes", "artifact_store"],
+    "baseline_checks": [],
+    "no_verification_reasons": []
+  },
+  "action_plan": {
+    "id": "action-plan-gt-yzhl",
+    "mode": "replacement_pr",
+    "proposed_action_ref": "action-plan-gt-yzhl",
+    "summary": "Focused current-main replacement for stale/conflicting PR #4056: route deacon/dogs/<name> mail notifications and DND/resolver paths to dog sessions, guard malformed reserved paths, and preserve PR #4056 attribution without carrying the broad stale stack.",
+    "created_at": "2026-07-07T19:15:00Z"
+  },
+  "labels": {
+    "observed": [
+      {"name": "status/merge-ready", "family": "status", "semantic_value": "merge-ready"},
+      {"name": "priority/p2", "family": "priority", "semantic_value": "p2"},
+      {"name": "kind/bug", "family": "kind", "semantic_value": "bug"}
+    ],
+    "status": "merge-ready",
+    "priority": "p2",
+    "kind": "bug",
+    "snapshot_artifact_ref": "label-snapshot-replacement"
+  },
+  "artifacts": [
+    {"id": "label-snapshot-replacement", "kind": "label_snapshot", "uri": "file:pr-sheriff-evidence/gt-yzhl-pr4056-replacement/evidence.json#labels", "actor": "gastown/polecats/pipboy", "created_at": "2026-07-07T19:53:06Z", "digest": null, "summary": "Replacement target semantics: status=merge-ready, priority=p2, kind=bug. Original PR #4056 remains status/review-failed and is not merge target."},
+    {"id": "original-pr-4056", "kind": "pull_request_snapshot", "uri": "https://github.com/gastownhall/gastown/pull/4056", "actor": "github", "created_at": "2026-07-07T19:53:06Z", "digest": null, "summary": "Original PR #4056 by adensur/Maksim is open, conflicting/DIRTY, labels kind/bug priority/p2 status/review-failed, head 6010f264."},
+    {"id": "verification-focused", "kind": "verification_log", "uri": "file:pr-sheriff-evidence/gt-yzhl-pr4056-replacement/evidence.json#verification", "actor": "gastown/polecats/pipboy", "created_at": "2026-07-07T19:50:00Z", "digest": null, "summary": "CGO_ENABLED=0 build and focused mail/cmd tests passed on rebased head 1851d4430; default CGO tests blocked locally by missing unicode/uregex.h ICU header."},
+    {"id": "checker-merge-gate", "kind": "checker_output", "uri": "file:pr-sheriff-evidence/gt-yzhl-pr4056-replacement/merge-gate-check.txt", "actor": "gt-pr-sheriff-check", "created_at": "2026-07-07T19:54:00Z", "digest": null, "summary": "Checker passed merge gate: merge_path_allowed=true, verdict=merge_replacement, 12 pass, 2 not_applicable, 0 fail."},
+    {"id": "research-R01", "kind": "research_report", "uri": "beads:gt-yzhl#R01-pr4056-facts", "actor": "R01-pr4056-facts", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "PR #4056 facts: stale/conflicting, author adensur/Maksim, relevant commit 6010f264, broad unrelated stack to avoid."},
+    {"id": "research-R02", "kind": "research_report", "uri": "beads:gt-yzhl#R02-mail-routing-code", "actor": "R02-mail-routing-code", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "Mail Send persists dog assignee correctly but notifyRecipient misroutes via AddressToSessionIDs deacon prefix."},
+    {"id": "research-R03", "kind": "research_report", "uri": "beads:gt-yzhl#R03-dog-pane-resolver", "actor": "R03-dog-pane-resolver", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "Dog identity deacon/dogs/<name> should map to tmux session hq-dog-<name> at mail notification boundary."},
+    {"id": "research-R04", "kind": "research_report", "uri": "beads:gt-yzhl#R04-malformed-path-guards", "actor": "R04-malformed-path-guards", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "Malformed deacon/dogs, nested dog paths, and deacon/* must not fall through to Deacon."},
+    {"id": "research-R05", "kind": "research_report", "uri": "beads:gt-yzhl#R05-dnd-resolver-alignment", "actor": "R05-dnd-resolver-alignment", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "DND lookup and directory/bead resolver should align dog addresses with hq-dog-* rather than hq-deacon."},
+    {"id": "research-R06", "kind": "research_report", "uri": "beads:gt-yzhl#R06-existing-tests", "actor": "R06-existing-tests", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "Identified router, resolver, DND, and nudge tests needed for dog routing and malformed guards."},
+    {"id": "research-R07", "kind": "research_report", "uri": "beads:gt-yzhl#R07-frontend-pane-routing", "actor": "R07-frontend-pane-routing", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "Frontend only sends mail requests; dog pane routing is backend/CLI and no UI change is required."},
+    {"id": "research-R08", "kind": "research_report", "uri": "beads:gt-yzhl#R08-cli-recipient-parser", "actor": "R08-cli-recipient-parser", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "gt mail and gt nudge parsing surfaces identified; direct nudge dog alignment is adjacent but small."},
+    {"id": "research-R09", "kind": "research_report", "uri": "beads:gt-yzhl#R09-deacon-dog-architecture", "actor": "R09-deacon-dog-architecture", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "Architecture maps dog address deacon/dogs/<name> to hq-dog-<name>; canonical address should remain deacon/dogs/<name>."},
+    {"id": "research-R10", "kind": "research_report", "uri": "beads:gt-yzhl#R10-pr-commit-6010f264", "actor": "R10-pr-commit-6010f264", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "Commit 6010f264 has focused dog prefix fix pattern reusable with attribution; rest of PR stack is stale/broad."},
+    {"id": "research-R11", "kind": "research_report", "uri": "beads:gt-yzhl#R11-edge-risk-security", "actor": "R11-edge-risk-security", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "Risk review recommended exact dog parser, safe names, and reserved town-subpath fail-closed behavior."},
+    {"id": "research-R12", "kind": "research_report", "uri": "beads:gt-yzhl#R12-repo-conventions-gates", "actor": "R12-repo-conventions-gates", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "Repo uses Go/gofmt; targeted CGO_ENABLED=0 tests are appropriate locally due ICU constraint."},
+    {"id": "research-R13", "kind": "research_report", "uri": "beads:gt-yzhl#R13-sheriff-evidence-context", "actor": "R13-sheriff-evidence-context", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "Evidence should be persisted locally and in Beads with final PR-SHERIFF-EVIDENCE comment tied to head SHA."},
+    {"id": "research-R14", "kind": "research_report", "uri": "beads:gt-yzhl#R14-address-docs-examples", "actor": "R14-address-docs-examples", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "Docs confirm general mail/nudge address formats and reveal dog address documentation gaps; no doc change required for this fix."},
+    {"id": "research-R15", "kind": "research_report", "uri": "beads:gt-yzhl#R15-current-main-repro", "actor": "R15-current-main-repro", "created_at": "2026-07-07T19:05:00Z", "digest": null, "summary": "Current main repro/static behavior: deacon/dogs/fido would resolve to hq-deacon in mail notification; direct nudge failed as rig deacon."},
+    {"id": "pre-P01", "kind": "pre_implementation_review", "uri": "beads:gt-yzhl#P01-minimality-cleanup", "actor": "P01-minimality-cleanup", "created_at": "2026-07-07T19:20:00Z", "digest": null, "summary": "Approved minimal cleanup plan with mandatory tightening for duplicate bead address rendering and safe-name semantics."},
+    {"id": "pre-P02", "kind": "pre_implementation_review", "uri": "beads:gt-yzhl#P02-correctness-edgecases", "actor": "P02-correctness-edgecases", "created_at": "2026-07-07T19:20:00Z", "digest": null, "summary": "Approved with mandatory adjustments for exact town roles, reserved-path rejection, hq-dog-* fixed-prefix mapping, and cmd DND."},
+    {"id": "pre-P03", "kind": "pre_implementation_review", "uri": "beads:gt-yzhl#P03-scope-pr4056-attribution", "actor": "P03-scope-pr4056-attribution", "created_at": "2026-07-07T19:20:00Z", "digest": null, "summary": "Approved focused current-main replacement scope and attribution constraints for PR #4056/6010f264."},
+    {"id": "pre-P04", "kind": "pre_implementation_review", "uri": "beads:gt-yzhl#P04-testability-gates", "actor": "P04-testability-gates", "created_at": "2026-07-07T19:20:00Z", "digest": null, "summary": "Initial block resolved before code by adding all mandatory false-positive, malformed dog, deacon slash, and hq-dog tests to the implemented plan."},
+    {"id": "pre-P05", "kind": "pre_implementation_review", "uri": "beads:gt-yzhl#P05-design-convergence", "actor": "P05-design-convergence", "created_at": "2026-07-07T19:20:00Z", "digest": null, "summary": "Approved mail-local resolver convergence; central session.ParseAddress cleanup deferred as broader follow-up."},
+    {"id": "post-FINAL01", "kind": "post_implementation_review", "uri": "beads:gt-yzhl#POST-FINAL01-cleanup", "actor": "POST-FINAL01-cleanup", "created_at": "2026-07-07T19:51:00Z", "digest": null, "summary": "Approved final head 1851d4430 for cleanup-first scope, dog routing, malformed guards, DND/resolver, and direct nudge alignment."},
+    {"id": "post-FINAL02", "kind": "post_implementation_review", "uri": "beads:gt-yzhl#POST-FINAL02-correctness", "actor": "POST-FINAL02-correctness", "created_at": "2026-07-07T19:51:00Z", "digest": null, "summary": "Approved final head edge cases including hyphen dogs, malformed reserved paths, hq-dog reverse mapping, and DND behavior."},
+    {"id": "post-FINAL03", "kind": "post_implementation_review", "uri": "beads:gt-yzhl#POST-FINAL03-tests", "actor": "POST-FINAL03-tests", "created_at": "2026-07-07T19:51:00Z", "digest": null, "summary": "Approved final test coverage including prior blockers: notifyRecipient dog-not-deacon and runNudge dog target."},
+    {"id": "post-FINAL04", "kind": "post_implementation_review", "uri": "beads:gt-yzhl#POST-FINAL04-integration", "actor": "POST-FINAL04-integration", "created_at": "2026-07-07T19:51:00Z", "digest": null, "summary": "Approved integration surfaces and no import cycle; go list and focused tests passed."},
+    {"id": "post-FINAL05", "kind": "post_implementation_review", "uri": "beads:gt-yzhl#POST-FINAL05-policy", "actor": "POST-FINAL05-policy", "created_at": "2026-07-07T19:51:00Z", "digest": null, "summary": "Approved PR Sheriff policy readiness for final code; durable evidence/checker artifacts still required before completion."}
+  ],
+  "implementation": {
+    "code_changed_by_sheriff": true,
+    "mode": "replacement_pr",
+    "first_code_change_at": "2026-07-07T19:25:00Z",
+    "modified_paths": [
+      "internal/cmd/dnd_test.go",
+      "internal/cmd/nudge.go",
+      "internal/cmd/nudge_test.go",
+      "internal/mail/dog_address.go",
+      "internal/mail/resolve.go",
+      "internal/mail/resolve_test.go",
+      "internal/mail/router.go",
+      "internal/mail/router_test.go"
+    ],
+    "commits": ["4e59dc31f", "1851d4430"]
+  },
+  "evidence": {
+    "research_legs": [
+      {"id": "R01", "independence_key": "R01-pr4056-facts", "artifact_ref": "research-R01", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R01", "lens": "PR facts and stale scope", "summary": "Original PR #4056 is stale/conflicting; focused 6010f264 intent is valid."},
+      {"id": "R02", "independence_key": "R02-mail-routing-code", "artifact_ref": "research-R02", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R02", "lens": "mail routing code", "summary": "notifyRecipient uses AddressToSessionIDs where deacon prefix misroutes dog addresses."},
+      {"id": "R03", "independence_key": "R03-dog-pane-resolver", "artifact_ref": "research-R03", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R03", "lens": "dog pane resolver", "summary": "Dog mail address should map to hq-dog session at notification boundary."},
+      {"id": "R04", "independence_key": "R04-malformed-path-guards", "artifact_ref": "research-R04", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R04", "lens": "malformed guards", "summary": "Reserved malformed town paths must fail closed."},
+      {"id": "R05", "independence_key": "R05-dnd-resolver-alignment", "artifact_ref": "research-R05", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R05", "lens": "DND and resolver alignment", "summary": "DND and resolver drift confirmed for dogs."},
+      {"id": "R06", "independence_key": "R06-existing-tests", "artifact_ref": "research-R06", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R06", "lens": "tests", "summary": "Focused router, resolver, DND, and nudge tests identified."},
+      {"id": "R07", "independence_key": "R07-frontend-pane-routing", "artifact_ref": "research-R07", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R07", "lens": "frontend scope", "summary": "No frontend changes needed."},
+      {"id": "R08", "independence_key": "R08-cli-recipient-parser", "artifact_ref": "research-R08", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R08", "lens": "CLI parser", "summary": "Direct nudge dog target needed alignment after post-review."},
+      {"id": "R09", "independence_key": "R09-deacon-dog-architecture", "artifact_ref": "research-R09", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R09", "lens": "architecture", "summary": "Canonical dog address/session mapping established."},
+      {"id": "R10", "independence_key": "R10-pr-commit-6010f264", "artifact_ref": "research-R10", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R10", "lens": "original commit compare", "summary": "Focused dog-prefix code reusable; stale broad stack avoided."},
+      {"id": "R11", "independence_key": "R11-edge-risk-security", "artifact_ref": "research-R11", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R11", "lens": "edge and security risks", "summary": "Safe dog names and fail-closed reserved paths are required."},
+      {"id": "R12", "independence_key": "R12-repo-conventions-gates", "artifact_ref": "research-R12", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R12", "lens": "repo conventions", "summary": "Go/gofmt and targeted tests are appropriate."},
+      {"id": "R13", "independence_key": "R13-sheriff-evidence-context", "artifact_ref": "research-R13", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R13", "lens": "evidence context", "summary": "Local evidence and Beads final comment needed."},
+      {"id": "R14", "independence_key": "R14-address-docs-examples", "artifact_ref": "research-R14", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R14", "lens": "docs", "summary": "Docs do not require frontend/doc changes for this fix."},
+      {"id": "R15", "independence_key": "R15-current-main-repro", "artifact_ref": "research-R15", "completed_at": "2026-07-07T19:05:00Z", "actor": "researcher-R15", "lens": "current-main repro", "summary": "Current main bug behavior confirmed without sending real mail."}
+    ],
+    "pre_implementation_reviews": [
+      {"id": "P01", "independence_key": "P01-minimality-cleanup", "artifact_ref": "pre-P01", "reviewed_action_ref": "action-plan-gt-yzhl", "completed_at": "2026-07-07T19:20:00Z", "actor": "pre-reviewer-P01", "verdict": "approve", "summary": "Approved minimal cleanup plan with required dog bead/address tightening."},
+      {"id": "P02", "independence_key": "P02-correctness-edgecases", "artifact_ref": "pre-P02", "reviewed_action_ref": "action-plan-gt-yzhl", "completed_at": "2026-07-07T19:20:00Z", "actor": "pre-reviewer-P02", "verdict": "approve", "summary": "Approved with exact town aliases, reserved-path guards, fixed hq-dog mapping, and DND alignment."},
+      {"id": "P03", "independence_key": "P03-scope-pr4056-attribution", "artifact_ref": "pre-P03", "reviewed_action_ref": "action-plan-gt-yzhl", "completed_at": "2026-07-07T19:20:00Z", "actor": "pre-reviewer-P03", "verdict": "approve", "summary": "Approved PR #4056 replacement scope and attribution requirements."},
+      {"id": "P04", "independence_key": "P04-testability-gates", "artifact_ref": "pre-P04", "reviewed_action_ref": "action-plan-gt-yzhl", "completed_at": "2026-07-07T19:20:00Z", "actor": "pre-reviewer-P04", "verdict": "approve", "summary": "Mandatory test additions were incorporated before code; reviewed plan became testable and complete."},
+      {"id": "P05", "independence_key": "P05-design-convergence", "artifact_ref": "pre-P05", "reviewed_action_ref": "action-plan-gt-yzhl", "completed_at": "2026-07-07T19:20:00Z", "actor": "pre-reviewer-P05", "verdict": "approve", "summary": "Approved mail-local convergence and deferred broader central parser cleanup."}
+    ],
+    "post_implementation_reviews": [
+      {"id": "POST-FINAL01", "independence_key": "POST-FINAL01-cleanup", "artifact_ref": "post-FINAL01", "reviewed_action_ref": "action-plan-gt-yzhl", "reviewed_head_sha": "1851d44300650595606b1be42b15a8ad27c5be7d", "completed_at": "2026-07-07T19:51:00Z", "actor": "post-reviewer-FINAL01", "verdict": "approve", "summary": "Approved cleanup-first final implementation."},
+      {"id": "POST-FINAL02", "independence_key": "POST-FINAL02-correctness", "artifact_ref": "post-FINAL02", "reviewed_action_ref": "action-plan-gt-yzhl", "reviewed_head_sha": "1851d44300650595606b1be42b15a8ad27c5be7d", "completed_at": "2026-07-07T19:51:00Z", "actor": "post-reviewer-FINAL02", "verdict": "approve", "summary": "Approved final correctness and edge cases."},
+      {"id": "POST-FINAL03", "independence_key": "POST-FINAL03-tests", "artifact_ref": "post-FINAL03", "reviewed_action_ref": "action-plan-gt-yzhl", "reviewed_head_sha": "1851d44300650595606b1be42b15a8ad27c5be7d", "completed_at": "2026-07-07T19:51:00Z", "actor": "post-reviewer-FINAL03", "verdict": "approve", "summary": "Approved final test coverage."},
+      {"id": "POST-FINAL04", "independence_key": "POST-FINAL04-integration", "artifact_ref": "post-FINAL04", "reviewed_action_ref": "action-plan-gt-yzhl", "reviewed_head_sha": "1851d44300650595606b1be42b15a8ad27c5be7d", "completed_at": "2026-07-07T19:51:00Z", "actor": "post-reviewer-FINAL04", "verdict": "approve", "summary": "Approved integration and import-cycle risk."},
+      {"id": "POST-FINAL05", "independence_key": "POST-FINAL05-policy", "artifact_ref": "post-FINAL05", "reviewed_action_ref": "action-plan-gt-yzhl", "reviewed_head_sha": "1851d44300650595606b1be42b15a8ad27c5be7d", "completed_at": "2026-07-07T19:51:00Z", "actor": "post-reviewer-FINAL05", "verdict": "approve", "summary": "Approved policy readiness subject to this durable evidence and checker pass."}
+    ]
+  },
+  "cleanup_first": {
+    "assessment": "acceptable_minimal",
+    "rationale": "Focused current-main replacement collapses dog address parsing into one mail helper, removes loose mayor/deacon prefix routing, and avoids PR #4056's broad stale stack.",
+    "prohibited_patterns": [
+      {"kind": "bandaid", "present": false, "exception_reason": "none", "evidence_ref": "post-FINAL01"},
+      {"kind": "workaround_layer", "present": false, "exception_reason": "none", "evidence_ref": "post-FINAL01"},
+      {"kind": "compatibility_shim", "present": false, "exception_reason": "none", "evidence_ref": "post-FINAL01"},
+      {"kind": "patch_on_patch", "present": false, "exception_reason": "none", "evidence_ref": "post-FINAL01"},
+      {"kind": "scope_creep", "present": false, "exception_reason": "none", "evidence_ref": "post-FINAL01"}
+    ]
+  },
+  "enhancement_approval": {
+    "required": false,
+    "required_reason": null,
+    "approved": false,
+    "approver": null,
+    "approver_role": null,
+    "approval_ref": null,
+    "approved_at": null
+  },
+  "verification": {
+    "focused_checks": [
+      {"name": "gofmt", "command_or_check": "gofmt -w internal/cmd/nudge.go internal/cmd/nudge_test.go internal/mail/router_test.go", "outcome": "pass", "artifact_ref": "verification-focused", "reason": "Formatting completed for touched files."},
+      {"name": "diff-check", "command_or_check": "git diff --check upstream/main...HEAD", "outcome": "pass", "artifact_ref": "verification-focused", "reason": "No whitespace or conflict-marker issues in final diff."},
+      {"name": "build", "command_or_check": "CGO_ENABLED=0 go build -v ./cmd/gt", "outcome": "pass", "artifact_ref": "verification-focused", "reason": "CLI builds with CGO disabled in the local environment."},
+      {"name": "mail-focused-tests", "command_or_check": "CGO_ENABLED=0 go test ./internal/mail -run '^(TestAddressToSessionIDs|TestAddressToAgentBeadID|TestAgentBeadToAddress|TestAgentBeadIDToAddress|TestValidateAgentWorkspaceDog|TestResolverValidateAgentAddressDogGuards|TestNotifyRecipient_DogQueuesDogSessionNotDeacon)$' -count=1", "outcome": "pass", "artifact_ref": "verification-focused", "reason": "Focused mail routing, resolver, DND, and dog-not-deacon notification tests passed."},
+      {"name": "cmd-focused-tests", "command_or_check": "CGO_ENABLED=0 go test ./internal/cmd -run '^(TestAddressToAgentBeadID|TestSessionNameToAddress|TestNudgeDogTargetRoutesToDogSession)$' -count=1", "outcome": "pass", "artifact_ref": "verification-focused", "reason": "Focused command DND, session reverse mapping, and dog nudge routing tests passed."}
+    ],
+    "ci_checks": []
+  },
+  "baseline_red_waiver": {
+    "requested": false,
+    "approved": false,
+    "approved_by": null,
+    "approver_role": null,
+    "approved_at": null,
+    "approval_ref": null,
+    "failing_checks": [],
+    "unrelated_rationale": "",
+    "evidence_refs": []
+  },
+  "replacement_flow": {
+    "required": true,
+    "mode": "replacement_pr",
+    "state": "ready",
+    "original_change_url": "https://github.com/gastownhall/gastown/pull/4056",
+    "replacement_change_url": "https://github.com/Bella-Giraffety/gastown/compare/main...polecat/pipboy/gt-yzhl@8e9ea7",
+    "replacement_branch": "polecat/pipboy/gt-yzhl@8e9ea7",
+    "replacement_commit_refs": ["4e59dc31f3dfe5fac9abb88591001d804747e182", "1851d44300650595606b1be42b15a8ad27c5be7d"],
+    "original_author": "adensur/Maksim",
+    "evidence_reuse": {
+      "reused_artifact_refs": ["original-pr-4056", "research-R10"],
+      "fresh_artifact_refs": ["verification-focused", "post-FINAL01", "post-FINAL02", "post-FINAL03", "post-FINAL04", "post-FINAL05"],
+      "rationale": "Only the focused dog-prefix routing intent from 6010f264 was reused; final implementation and tests are fresh on current main."
+    },
+    "attribution": {
+      "required": true,
+      "required_reason": "Replacement preserves valid bug intent from PR #4056 and commit 6010f264 by adensur/Maksim.",
+      "preserved": true,
+      "method": "comment_credit",
+      "artifact_refs": ["original-pr-4056", "research-R10"]
+    },
+    "superseded_closure": {
+      "required": true,
+      "state": "deferred_until_replacement_merge",
+      "closure_intent_ref": "original-pr-4056",
+      "replacement_merge_ref": null,
+      "closure_ref": null
+    }
+  },
+  "blocker_scan": {
+    "scanned_sources": ["labels", "pr_comments", "review_comments", "beads_notes", "local_reviews", "verification"],
+    "unresolved_blockers_found": false,
+    "blocker_refs": [],
+    "resolution_refs": ["post-FINAL01", "post-FINAL02", "post-FINAL03", "post-FINAL04", "post-FINAL05", "verification-focused"],
+    "scanned_at": "2026-07-07T19:53:06Z",
+    "summary": "Original PR #4056 remains review-failed/conflicting and is not the merge target. Replacement branch blockers from post-review were resolved before final head 1851d4430; no unresolved blockers remain for the replacement target."
+  },
+  "gates": [],
+  "final": {
+    "verdict": "merge_replacement",
+    "decision_valid": true,
+    "merge_path_allowed": true,
+    "blocking_gates": [],
+    "target_change_url": "https://github.com/Bella-Giraffety/gastown/compare/main...polecat/pipboy/gt-yzhl@8e9ea7",
+    "target_head_sha": "1851d44300650595606b1be42b15a8ad27c5be7d",
+    "decided_by": "gastown/polecats/pipboy",
+    "decided_at": "2026-07-07T19:53:06Z",
+    "reason": "All PR Sheriff research, pre-review, post-review, cleanup-first, replacement attribution, blocker scan, and focused verification gates pass for the checked replacement head.",
+    "required_actions": ["Do not close PR #4056 as superseded until this replacement lands with evidence."]
+  }
+}

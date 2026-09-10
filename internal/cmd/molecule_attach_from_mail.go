@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
-	"github.com/cursorworkshop/cursor-gastown/internal/mail"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/mail"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // runMoleculeAttachFromMail handles the "gt mol attach-from-mail <mail-id>" command.
@@ -116,7 +116,7 @@ func runMoleculeAttachFromMail(cmd *cobra.Command, args []string) error {
 
 	// Output success
 	attachment := beads.ParseAttachmentFields(issue)
-	fmt.Printf("%s Attached molecule from mail\n", style.Bold.Render("OK"))
+	fmt.Printf("%s Attached molecule from mail\n", style.Bold.Render("✓"))
 	fmt.Printf("  Mail: %s\n", mailID)
 	fmt.Printf("  Hook: %s\n", hookBead.ID)
 	fmt.Printf("  Molecule: %s\n", moleculeID)

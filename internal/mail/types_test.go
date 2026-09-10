@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -16,11 +17,17 @@ func TestAddressToIdentity(t *testing.T) {
 		{"deacon", "deacon/"},
 		{"deacon/", "deacon/"},
 
+		// Rig-scoped town-level roles resolve to canonical form (gt-te23)
+		{"gastown/mayor", "mayor/"},
+		{"gastown/deacon", "deacon/"},
+		{"laser/mayor", "mayor/"},
+		{"laser/deacon", "deacon/"},
+
 		// Rig-level agents: crew/ and polecats/ normalized to canonical form
 		{"gastown/polecats/Toast", "gastown/Toast"},
 		{"gastown/crew/max", "gastown/max"},
-		{"gastown/Toast", "gastown/Toast"},         // Already canonical
-		{"gastown/max", "gastown/max"},             // Already canonical
+		{"gastown/Toast", "gastown/Toast"}, // Already canonical
+		{"gastown/max", "gastown/max"},     // Already canonical
 		{"gastown/refinery", "gastown/refinery"},
 		{"gastown/witness", "gastown/witness"},
 
@@ -30,9 +37,9 @@ func TestAddressToIdentity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.address, func(t *testing.T) {
-			got := addressToIdentity(tt.address)
+			got := AddressToIdentity(tt.address)
 			if got != tt.expected {
-				t.Errorf("addressToIdentity(%q) = %q, want %q", tt.address, got, tt.expected)
+				t.Errorf("AddressToIdentity(%q) = %q, want %q", tt.address, got, tt.expected)
 			}
 		})
 	}
@@ -52,7 +59,7 @@ func TestIdentityToAddress(t *testing.T) {
 		// Rig-level agents: crew/ and polecats/ normalized
 		{"gastown/polecats/Toast", "gastown/Toast"},
 		{"gastown/crew/max", "gastown/max"},
-		{"gastown/Toast", "gastown/Toast"},  // Already canonical
+		{"gastown/Toast", "gastown/Toast"}, // Already canonical
 		{"gastown/refinery", "gastown/refinery"},
 		{"gastown/witness", "gastown/witness"},
 
@@ -101,7 +108,7 @@ func TestPriorityFromInt(t *testing.T) {
 		{1, PriorityHigh},
 		{2, PriorityNormal},
 		{3, PriorityLow},
-		{4, PriorityLow},  // Out of range maps to low
+		{4, PriorityLow},     // Out of range maps to low
 		{-1, PriorityNormal}, // Negative maps to normal
 	}
 
@@ -143,6 +150,7 @@ func TestParseMessageType(t *testing.T) {
 		expected MessageType
 	}{
 		{"task", TypeTask},
+		{"escalation", TypeEscalation},
 		{"scavenge", TypeScavenge},
 		{"notification", TypeNotification},
 		{"reply", TypeReply},
@@ -281,6 +289,41 @@ func TestBeadsMessageToMessageWithReplyTo(t *testing.T) {
 	}
 }
 
+func TestBeadsMessageToMessageWithEscalationTypeAndLabels(t *testing.T) {
+	bm := BeadsMessage{
+		ID:          "hq-esc",
+		Title:       "Escalation subject",
+		Description: "Escalation body",
+		Status:      "open",
+		Assignee:    "mayor",
+		Labels: []string{
+			"from:deacon/",
+			"thread:t-esc",
+			"msg-type:escalation",
+			"gt:escalation",
+			"severity:critical",
+			"escalation:hq-abc123",
+		},
+		CreatedAt: time.Now(),
+		Priority:  0,
+	}
+
+	msg := bm.ToMessage()
+
+	if msg.Type != TypeEscalation {
+		t.Errorf("Type = %q, want TypeEscalation", msg.Type)
+	}
+	if !bm.HasLabel("gt:escalation") {
+		t.Error("expected gt:escalation label to be preserved")
+	}
+	if !bm.HasLabel("severity:critical") {
+		t.Error("expected severity:critical label to be preserved")
+	}
+	if !bm.HasLabel("escalation:hq-abc123") {
+		t.Error("expected escalation linkage label to be preserved")
+	}
+}
+
 func TestBeadsMessageToMessagePriorities(t *testing.T) {
 	tests := []struct {
 		priority int
@@ -312,6 +355,7 @@ func TestBeadsMessageToMessageTypes(t *testing.T) {
 		expected MessageType
 	}{
 		{"task", TypeTask},
+		{"escalation", TypeEscalation},
 		{"scavenge", TypeScavenge},
 		{"reply", TypeReply},
 		{"notification", TypeNotification},
@@ -347,5 +391,581 @@ func TestBeadsMessageToMessageEmptyLabels(t *testing.T) {
 	}
 	if msg.ThreadID != "" {
 		t.Errorf("ThreadID should be empty, got %q", msg.ThreadID)
+	}
+}
+
+func TestNewQueueMessage(t *testing.T) {
+	msg := NewQueueMessage("mayor/", "work-requests", "New Task", "Please process this")
+
+	if msg.From != "mayor/" {
+		t.Errorf("From = %q, want 'mayor/'", msg.From)
+	}
+	if msg.Queue != "work-requests" {
+		t.Errorf("Queue = %q, want 'work-requests'", msg.Queue)
+	}
+	if msg.To != "" {
+		t.Errorf("To should be empty for queue messages, got %q", msg.To)
+	}
+	if msg.Channel != "" {
+		t.Errorf("Channel should be empty for queue messages, got %q", msg.Channel)
+	}
+	if msg.Type != TypeTask {
+		t.Errorf("Type = %q, want TypeTask", msg.Type)
+	}
+	if msg.ID == "" {
+		t.Error("ID should be generated")
+	}
+	if msg.ThreadID == "" {
+		t.Error("ThreadID should be generated")
+	}
+}
+
+func TestNewChannelMessage(t *testing.T) {
+	msg := NewChannelMessage("deacon/", "alerts", "System Alert", "System is healthy")
+
+	if msg.From != "deacon/" {
+		t.Errorf("From = %q, want 'deacon/'", msg.From)
+	}
+	if msg.Channel != "alerts" {
+		t.Errorf("Channel = %q, want 'alerts'", msg.Channel)
+	}
+	if msg.To != "" {
+		t.Errorf("To should be empty for channel messages, got %q", msg.To)
+	}
+	if msg.Queue != "" {
+		t.Errorf("Queue should be empty for channel messages, got %q", msg.Queue)
+	}
+	if msg.Type != TypeNotification {
+		t.Errorf("Type = %q, want TypeNotification", msg.Type)
+	}
+}
+
+func TestMessageIsQueueMessage(t *testing.T) {
+	directMsg := NewMessage("mayor/", "gastown/Toast", "Test", "Body")
+	queueMsg := NewQueueMessage("mayor/", "work-requests", "Task", "Body")
+	channelMsg := NewChannelMessage("deacon/", "alerts", "Alert", "Body")
+
+	if directMsg.IsQueueMessage() {
+		t.Error("Direct message should not be a queue message")
+	}
+	if !queueMsg.IsQueueMessage() {
+		t.Error("Queue message should be a queue message")
+	}
+	if channelMsg.IsQueueMessage() {
+		t.Error("Channel message should not be a queue message")
+	}
+}
+
+func TestMessageIsChannelMessage(t *testing.T) {
+	directMsg := NewMessage("mayor/", "gastown/Toast", "Test", "Body")
+	queueMsg := NewQueueMessage("mayor/", "work-requests", "Task", "Body")
+	channelMsg := NewChannelMessage("deacon/", "alerts", "Alert", "Body")
+
+	if directMsg.IsChannelMessage() {
+		t.Error("Direct message should not be a channel message")
+	}
+	if queueMsg.IsChannelMessage() {
+		t.Error("Queue message should not be a channel message")
+	}
+	if !channelMsg.IsChannelMessage() {
+		t.Error("Channel message should be a channel message")
+	}
+}
+
+func TestMessageIsDirectMessage(t *testing.T) {
+	directMsg := NewMessage("mayor/", "gastown/Toast", "Test", "Body")
+	queueMsg := NewQueueMessage("mayor/", "work-requests", "Task", "Body")
+	channelMsg := NewChannelMessage("deacon/", "alerts", "Alert", "Body")
+
+	if !directMsg.IsDirectMessage() {
+		t.Error("Direct message should be a direct message")
+	}
+	if queueMsg.IsDirectMessage() {
+		t.Error("Queue message should not be a direct message")
+	}
+	if channelMsg.IsDirectMessage() {
+		t.Error("Channel message should not be a direct message")
+	}
+}
+
+func TestMessageValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		msg     *Message
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "valid direct message",
+			msg:     NewMessage("mayor/", "gastown/Toast", "Test", "Body"),
+			wantErr: false,
+		},
+		{
+			name:    "valid queue message",
+			msg:     NewQueueMessage("mayor/", "work-requests", "Task", "Body"),
+			wantErr: false,
+		},
+		{
+			name:    "valid channel message",
+			msg:     NewChannelMessage("deacon/", "alerts", "Alert", "Body"),
+			wantErr: false,
+		},
+		{
+			name: "missing ID",
+			msg: &Message{
+				From:    "mayor/",
+				To:      "gastown/Toast",
+				Subject: "Test",
+			},
+			wantErr: true,
+			errMsg:  "must have an ID",
+		},
+		{
+			name: "missing From",
+			msg: &Message{
+				ID:      "msg-001",
+				To:      "gastown/Toast",
+				Subject: "Test",
+			},
+			wantErr: true,
+			errMsg:  "must have a From address",
+		},
+		{
+			name: "missing Subject",
+			msg: &Message{
+				ID:   "msg-001",
+				From: "mayor/",
+				To:   "gastown/Toast",
+			},
+			wantErr: true,
+			errMsg:  "must have a Subject",
+		},
+		{
+			name: "no routing target",
+			msg: &Message{
+				ID:      "msg-001",
+				From:    "mayor/",
+				Subject: "Test",
+			},
+			wantErr: true,
+			errMsg:  "must have exactly one of",
+		},
+		{
+			name: "both to and queue",
+			msg: &Message{
+				ID:      "msg-001",
+				From:    "mayor/",
+				To:      "gastown/Toast",
+				Queue:   "work-requests",
+				Subject: "Test",
+			},
+			wantErr: true,
+			errMsg:  "mutually exclusive",
+		},
+		{
+			name: "both to and channel",
+			msg: &Message{
+				ID:      "msg-001",
+				From:    "mayor/",
+				To:      "gastown/Toast",
+				Channel: "alerts",
+				Subject: "Test",
+			},
+			wantErr: true,
+			errMsg:  "mutually exclusive",
+		},
+		{
+			name: "both queue and channel",
+			msg: &Message{
+				ID:      "msg-001",
+				From:    "mayor/",
+				Queue:   "work-requests",
+				Channel: "alerts",
+				Subject: "Test",
+			},
+			wantErr: true,
+			errMsg:  "mutually exclusive",
+		},
+		{
+			name: "claimed_by on non-queue message",
+			msg: &Message{
+				ID:        "msg-001",
+				From:      "mayor/",
+				To:        "gastown/Toast",
+				Subject:   "Test",
+				ClaimedBy: "gastown/nux",
+			},
+			wantErr: true,
+			errMsg:  "claimed_by is only valid for queue messages",
+		},
+		{
+			name: "claimed_by on queue message is valid",
+			msg: &Message{
+				ID:        "msg-001",
+				From:      "mayor/",
+				Queue:     "work-requests",
+				Subject:   "Test",
+				ClaimedBy: "gastown/nux",
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.msg.Validate()
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error but got nil")
+				} else if tt.errMsg != "" && !containsString(err.Error(), tt.errMsg) {
+					t.Errorf("error %q should contain %q", err.Error(), tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func containsString(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBeadsMessageParseQueueChannelLabels(t *testing.T) {
+	claimedTime := time.Date(2026, 1, 14, 12, 0, 0, 0, time.UTC)
+	claimedAtStr := claimedTime.Format(time.RFC3339)
+
+	bm := BeadsMessage{
+		ID:          "hq-queue",
+		Title:       "Queue Message",
+		Description: "Test queue message",
+		Status:      "open",
+		Labels: []string{
+			"from:mayor/",
+			"queue:work-requests",
+			"claimed-by:gastown/nux",
+			"claimed-at:" + claimedAtStr,
+		},
+		Priority: 2,
+	}
+
+	msg := bm.ToMessage()
+
+	if msg.Queue != "work-requests" {
+		t.Errorf("Queue = %q, want 'work-requests'", msg.Queue)
+	}
+	if msg.ClaimedBy != "gastown/nux" {
+		t.Errorf("ClaimedBy = %q, want 'gastown/nux'", msg.ClaimedBy)
+	}
+	if msg.ClaimedAt == nil {
+		t.Error("ClaimedAt should not be nil")
+	} else if !msg.ClaimedAt.Equal(claimedTime) {
+		t.Errorf("ClaimedAt = %v, want %v", msg.ClaimedAt, claimedTime)
+	}
+}
+
+func TestBeadsMessageParseChannelLabel(t *testing.T) {
+	bm := BeadsMessage{
+		ID:          "hq-channel",
+		Title:       "Channel Message",
+		Description: "Test channel message",
+		Status:      "open",
+		Labels:      []string{"from:deacon/", "channel:alerts"},
+		Priority:    2,
+	}
+
+	msg := bm.ToMessage()
+
+	if msg.Channel != "alerts" {
+		t.Errorf("Channel = %q, want 'alerts'", msg.Channel)
+	}
+	if msg.Queue != "" {
+		t.Errorf("Queue should be empty, got %q", msg.Queue)
+	}
+}
+
+func TestBeadsMessageIsQueueMessage(t *testing.T) {
+	queueMsg := BeadsMessage{
+		ID:     "hq-queue",
+		Labels: []string{"queue:work-requests"},
+	}
+	directMsg := BeadsMessage{
+		ID:       "hq-direct",
+		Assignee: "gastown/Toast",
+	}
+	channelMsg := BeadsMessage{
+		ID:     "hq-channel",
+		Labels: []string{"channel:alerts"},
+	}
+
+	if !queueMsg.IsQueueMessage() {
+		t.Error("Queue message should be identified as queue message")
+	}
+	if directMsg.IsQueueMessage() {
+		t.Error("Direct message should not be identified as queue message")
+	}
+	if channelMsg.IsQueueMessage() {
+		t.Error("Channel message should not be identified as queue message")
+	}
+}
+
+func TestBeadsMessageIsChannelMessage(t *testing.T) {
+	queueMsg := BeadsMessage{
+		ID:     "hq-queue",
+		Labels: []string{"queue:work-requests"},
+	}
+	directMsg := BeadsMessage{
+		ID:       "hq-direct",
+		Assignee: "gastown/Toast",
+	}
+	channelMsg := BeadsMessage{
+		ID:     "hq-channel",
+		Labels: []string{"channel:alerts"},
+	}
+
+	if queueMsg.IsChannelMessage() {
+		t.Error("Queue message should not be identified as channel message")
+	}
+	if directMsg.IsChannelMessage() {
+		t.Error("Direct message should not be identified as channel message")
+	}
+	if !channelMsg.IsChannelMessage() {
+		t.Error("Channel message should be identified as channel message")
+	}
+}
+
+func TestBeadsMessageIsDirectMessage(t *testing.T) {
+	queueMsg := BeadsMessage{
+		ID:     "hq-queue",
+		Labels: []string{"queue:work-requests"},
+	}
+	directMsg := BeadsMessage{
+		ID:       "hq-direct",
+		Assignee: "gastown/Toast",
+	}
+	channelMsg := BeadsMessage{
+		ID:     "hq-channel",
+		Labels: []string{"channel:alerts"},
+	}
+
+	if queueMsg.IsDirectMessage() {
+		t.Error("Queue message should not be identified as direct message")
+	}
+	if !directMsg.IsDirectMessage() {
+		t.Error("Direct message should be identified as direct message")
+	}
+	if channelMsg.IsDirectMessage() {
+		t.Error("Channel message should not be identified as direct message")
+	}
+}
+
+func TestMessageIsClaimed(t *testing.T) {
+	unclaimed := NewQueueMessage("mayor/", "work-requests", "Task", "Body")
+	if unclaimed.IsClaimed() {
+		t.Error("Unclaimed message should not be claimed")
+	}
+
+	claimed := NewQueueMessage("mayor/", "work-requests", "Task", "Body")
+	claimed.ClaimedBy = "gastown/nux"
+	now := time.Now()
+	claimed.ClaimedAt = &now
+
+	if !claimed.IsClaimed() {
+		t.Error("Claimed message should be claimed")
+	}
+}
+
+func TestParseLabelsIdempotent(t *testing.T) {
+	bm := BeadsMessage{
+		ID:    "hq-test",
+		Title: "Test",
+		Labels: []string{
+			"from:mayor/",
+			"thread:t-001",
+			"reply-to:orig-001",
+			"msg-type:task",
+			"cc:gastown/Toast",
+			"cc:gastown/nux",
+			"queue:work-requests",
+			"channel:alerts",
+			"claimed-by:gastown/nux",
+			"delivery:pending",
+			"delivery-acked-by:gastown/nux",
+			"delivery-acked-at:2026-02-17T12:00:00Z",
+			"delivery:acked",
+		},
+	}
+
+	// Call ParseLabels multiple times
+	bm.ParseLabels()
+	bm.ParseLabels()
+	bm.ParseLabels()
+
+	// CC list should not accumulate duplicates
+	if len(bm.cc) != 2 {
+		t.Errorf("cc should have 2 entries after multiple ParseLabels calls, got %d: %v", len(bm.cc), bm.cc)
+	}
+
+	// Other fields should remain correct
+	if bm.sender != "mayor/" {
+		t.Errorf("sender = %q, want 'mayor/'", bm.sender)
+	}
+	if bm.threadID != "t-001" {
+		t.Errorf("threadID = %q, want 't-001'", bm.threadID)
+	}
+	if bm.replyTo != "orig-001" {
+		t.Errorf("replyTo = %q, want 'orig-001'", bm.replyTo)
+	}
+	if bm.msgType != "task" {
+		t.Errorf("msgType = %q, want 'task'", bm.msgType)
+	}
+	if bm.queue != "work-requests" {
+		t.Errorf("queue = %q, want 'work-requests'", bm.queue)
+	}
+	if bm.channel != "alerts" {
+		t.Errorf("channel = %q, want 'alerts'", bm.channel)
+	}
+	if bm.claimedBy != "gastown/nux" {
+		t.Errorf("claimedBy = %q, want 'gastown/nux'", bm.claimedBy)
+	}
+	if bm.deliveryState != DeliveryStateAcked {
+		t.Errorf("deliveryState = %q, want %q", bm.deliveryState, DeliveryStateAcked)
+	}
+	if bm.deliveryAckedBy != "gastown/nux" {
+		t.Errorf("deliveryAckedBy = %q, want %q", bm.deliveryAckedBy, "gastown/nux")
+	}
+}
+
+func TestParseLabelsIdempotentViaPublicMethods(t *testing.T) {
+	bm := BeadsMessage{
+		ID:       "hq-test",
+		Title:    "Test",
+		Assignee: "gastown/Toast",
+		Labels: []string{
+			"from:mayor/",
+			"cc:gastown/nux",
+			"cc:gastown/slit",
+		},
+	}
+
+	// Simulate the bug: calling IsDirectMessage then ToMessage
+	// Both call ParseLabels internally
+	_ = bm.IsDirectMessage()
+	_ = bm.IsQueueMessage()
+	_ = bm.IsChannelMessage()
+	msg := bm.ToMessage()
+
+	if len(msg.CC) != 2 {
+		t.Errorf("CC should have 2 entries after multiple method calls, got %d: %v", len(msg.CC), msg.CC)
+	}
+}
+
+func TestToMessage_DeliveryStatePendingOnPartialAck(t *testing.T) {
+	bm := BeadsMessage{
+		ID:       "hq-test",
+		Title:    "Test",
+		Assignee: "gastown/Toast",
+		Labels: []string{
+			"from:mayor/",
+			"delivery:pending",
+			"delivery-acked-by:gastown/Toast",
+		},
+	}
+
+	msg := bm.ToMessage()
+	if msg.DeliveryState != DeliveryStatePending {
+		t.Fatalf("DeliveryState = %q, want %q", msg.DeliveryState, DeliveryStatePending)
+	}
+	if msg.DeliveryAckedBy != "" || msg.DeliveryAckedAt != nil {
+		t.Fatalf("partial ack should not expose ack metadata, got by=%q at=%v", msg.DeliveryAckedBy, msg.DeliveryAckedAt)
+	}
+}
+
+func TestSuppressNotifyNotSerialized(t *testing.T) {
+	msg := NewMessage("mayor/", "gastown/Toast", "Test", "Body")
+	msg.SuppressNotify = true
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+
+	// SuppressNotify should not appear in JSON output (json:"-" tag)
+	if containsString(string(data), "SuppressNotify") || containsString(string(data), "suppress") {
+		t.Errorf("SuppressNotify should not be serialized, but found in JSON: %s", data)
+	}
+
+	// Roundtrip: unmarshal should leave SuppressNotify as false (zero value)
+	var decoded Message
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+	if decoded.SuppressNotify {
+		t.Error("SuppressNotify should be false after roundtrip (not deserialized)")
+	}
+}
+
+func TestNewMessageValidatesForCrossRigAddresses(t *testing.T) {
+	// Regression test: cross-rig addresses like "beads/crew/emma" must have
+	// auto-generated ID and pass validation (gt-rud3p).
+	crossRigAddresses := []string{
+		"beads/crew/emma",
+		"gastown/polecats/Toast",
+		"otherrig/witness",
+		"mayor/",
+	}
+
+	for _, addr := range crossRigAddresses {
+		t.Run(addr, func(t *testing.T) {
+			msg := NewMessage("gastown/dag", addr, "Test subject", "Test body")
+
+			if msg.ID == "" {
+				t.Error("NewMessage must generate a non-empty ID")
+			}
+			if msg.ThreadID == "" {
+				t.Error("NewMessage must generate a non-empty ThreadID")
+			}
+
+			if err := msg.Validate(); err != nil {
+				t.Errorf("NewMessage for %q should produce a valid message, got: %v", addr, err)
+			}
+		})
+	}
+}
+
+func TestNewMessageFanOutCopiesGetUniqueIDs(t *testing.T) {
+	// When fanning out to multiple recipients, copies with cleared IDs
+	// should get unique IDs from sendToSingle (gt-rud3p).
+	msg := NewMessage("gastown/dag", "beads/crew/emma", "Test", "Body")
+	originalID := msg.ID
+
+	if originalID == "" {
+		t.Fatal("original message must have an ID")
+	}
+
+	// Simulate fan-out: create a copy and clear its ID
+	msgCopy := *msg
+	msgCopy.To = "otherrig/crew/bob"
+	msgCopy.ID = ""
+
+	if msgCopy.ID == originalID {
+		t.Error("fan-out copy ID should be cleared, not match original")
+	}
+
+	// The cleared copy should fail validation (sendToSingle regenerates it)
+	if err := msgCopy.Validate(); err == nil {
+		t.Error("copy with empty ID should fail validation before sendToSingle regenerates it")
 	}
 }

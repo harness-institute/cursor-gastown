@@ -2,11 +2,10 @@ package doctor
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/session"
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // LinkedPaneCheck detects tmux sessions that share panes,
@@ -23,6 +22,7 @@ func NewLinkedPaneCheck() *LinkedPaneCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "linked-panes",
 				CheckDescription: "Detect tmux sessions sharing panes (causes crosstalk)",
+				CheckCategory:    CategoryInfrastructure,
 			},
 		},
 	}
@@ -42,11 +42,11 @@ func (c *LinkedPaneCheck) Run(ctx *CheckContext) *CheckResult {
 		}
 	}
 
-	// Filter to gt-* sessions only
+	// Filter to Gas Town sessions only
 	var gtSessions []string
-	for _, session := range sessions {
-		if strings.HasPrefix(session, "gt-") {
-			gtSessions = append(gtSessions, session)
+	for _, s := range sessions {
+		if session.IsKnownSession(s) {
+			gtSessions = append(gtSessions, s)
 		}
 	}
 
@@ -122,7 +122,8 @@ func (c *LinkedPaneCheck) Fix(ctx *CheckContext) error {
 	var lastErr error
 
 	for _, session := range c.linkedSessions {
-		if err := t.KillSession(session); err != nil {
+		// Use KillSessionWithProcesses to ensure all descendant processes are killed.
+		if err := t.KillSessionWithProcesses(session); err != nil {
 			lastErr = err
 		}
 	}
@@ -135,7 +136,7 @@ func (c *LinkedPaneCheck) getSessionPanes(session string) ([]string, error) {
 	// Get pane IDs using tmux list-panes with format
 	// Using #{pane_id} which gives us the unique pane identifier like %123
 	// Note: -s flag lists all panes in all windows of this session (not -a which is global)
-	out, err := exec.Command("tmux", "list-panes", "-t", session, "-s", "-F", "#{pane_id}").Output()
+	out, err := tmux.BuildCommand("list-panes", "-t", session, "-s", "-F", "#{pane_id}").Output()
 	if err != nil {
 		return nil, err
 	}

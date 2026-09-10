@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 var (
@@ -31,7 +33,7 @@ var broadcastCmd = &cobra.Command{
 By default, only workers (polecats and crew) receive the message.
 Use --all to include infrastructure agents (mayor, deacon, witness, refinery).
 
-The message is sent as a nudge to each worker's Cursor session.
+The message is sent as a nudge to each worker's Claude Code session.
 
 Examples:
   gt broadcast "Check your mail"
@@ -55,6 +57,9 @@ func runBroadcast(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("listing sessions: %w", err)
 	}
 
+	// Get sender identity to exclude self
+	sender := os.Getenv("BD_ACTOR")
+
 	// Filter to target agents
 	var targets []*AgentSession
 	for _, agent := range agents {
@@ -68,6 +73,11 @@ func runBroadcast(cmd *cobra.Command, args []string) error {
 			if agent.Type != AgentCrew && agent.Type != AgentPolecat {
 				continue
 			}
+		}
+
+		// Skip self to avoid interrupting own session
+		if sender != "" && formatAgentName(agent) == sender {
+			continue
 		}
 
 		targets = append(targets, agent)
@@ -93,13 +103,23 @@ func runBroadcast(cmd *cobra.Command, args []string) error {
 
 	// Send nudges
 	t := tmux.NewTmux()
-	var succeeded, failed int
+	townRoot, _ := workspace.FindFromCwd()
+	var succeeded, failed, skipped int
 	var failures []string
 
 	fmt.Printf("Broadcasting to %d agent(s)...\n\n", len(targets))
 
 	for i, agent := range targets {
 		agentName := formatAgentName(agent)
+
+		// Check DND status before nudging
+		if townRoot != "" {
+			if shouldSend, level, _ := shouldNudgeTarget(townRoot, agentName, false); !shouldSend {
+				skipped++
+				fmt.Printf("  %s %s %s (DND: %s)\n", style.Dim.Render("○"), AgentTypeIcons[agent.Type], agentName, level)
+				continue
+			}
+		}
 
 		if err := t.NudgeSession(agent.Name, message); err != nil {
 			failed++
@@ -118,15 +138,22 @@ func runBroadcast(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	if failed > 0 {
-		fmt.Printf("%s Broadcast complete: %d succeeded, %d failed\n",
-			style.WarningPrefix, succeeded, failed)
+		summary := fmt.Sprintf("Broadcast complete: %d succeeded, %d failed", succeeded, failed)
+		if skipped > 0 {
+			summary += fmt.Sprintf(", %d skipped (DND)", skipped)
+		}
+		fmt.Printf("%s %s\n", style.WarningPrefix, summary)
 		for _, f := range failures {
 			fmt.Printf("  %s\n", style.Dim.Render(f))
 		}
 		return fmt.Errorf("%d nudge(s) failed", failed)
 	}
 
-	fmt.Printf("%s Broadcast complete: %d agent(s) nudged\n", style.SuccessPrefix, succeeded)
+	summary := fmt.Sprintf("Broadcast complete: %d agent(s) nudged", succeeded)
+	if skipped > 0 {
+		summary += fmt.Sprintf(", %d skipped (DND)", skipped)
+	}
+	fmt.Printf("%s %s\n", style.SuccessPrefix, summary)
 	return nil
 }
 

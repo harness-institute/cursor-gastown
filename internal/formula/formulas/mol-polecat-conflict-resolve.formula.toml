@@ -2,12 +2,12 @@ description = """
 Conflict resolution workflow for polecats handling merge conflicts.
 
 This molecule guides a polecat through resolving merge conflicts for a previously
-submitted MR that failed to rebase. The workflow uses the merge-slot gate to
+submitted MR that failed to merge. The workflow uses the merge-slot gate to
 serialize conflict resolution and prevent racing.
 
 ## Task Recognition
 
-Conflict resolution tasks are created by the Refinery when a mechanical rebase
+Conflict resolution tasks are created by the Refinery when a mechanical merge
 fails. They are identified by:
 - Title prefix: "Resolve merge conflicts:"
 - Metadata fields in description: Original MR, Branch, Conflict SHA
@@ -17,8 +17,8 @@ fails. They are identified by:
 | Aspect | Regular Work | Conflict Resolution |
 |--------|--------------|---------------------|
 | Branch source | Create new branch | Checkout existing MR branch |
-| Merge path | Submit to queue via `gt done` | Push directly to main |
-| Issue closure | Refinery closes after merge | Close MR bead yourself |
+| Merge path | Submit to queue via `gt done` | Push resolved MR branch for refinery retry |
+| Issue closure | Refinery closes after verified post-merge | Refinery closes after verified post-merge |
 | Serialization | None | Merge-slot gate required |
 
 ## Variables
@@ -27,8 +27,9 @@ fails. They are identified by:
 |----------|--------|-------------|
 | task | hook_bead | The conflict-resolution task ID |
 | original_mr | task metadata | The MR bead that had conflicts |
-| branch | task metadata | The branch to rebase |
-| conflict_sha | task metadata | Main SHA when conflict occurred |
+| branch | task metadata | The branch to merge target into |
+| conflict_sha | task metadata | Base branch SHA when conflict occurred |
+| base_branch | sling vars | The base branch to merge from (default: main) |
 
 ## Failure Modes
 
@@ -39,7 +40,7 @@ fails. They are identified by:
 | Tests fail after resolve | Fix them before pushing |
 | Resolution unclear | Read original issue for context |"""
 formula = "mol-polecat-conflict-resolve"
-version = 1
+version = 2
 
 [[steps]]
 id = "load-task"
@@ -76,8 +77,8 @@ The task description contains structured metadata:
 ```
 
 Parse and note:
-- **original_mr**: The MR bead ID (you'll close this after merge)
-- **branch**: The branch to checkout and rebase
+- **original_mr**: The MR bead ID the Refinery will retry and close after verified post-merge cleanup
+- **branch**: The branch to checkout and resolve
 - **source_issue**: The original work issue (read for context if needed)
 - **retry_count**: How many times this has been attempted
 
@@ -98,7 +99,7 @@ description = """
 Acquire exclusive access to the merge slot before proceeding.
 
 The merge slot prevents multiple conflict-resolution polecats from racing
-to push to main simultaneously (the "Monkey Knife Fight" problem).
+to push to {{base_branch}} simultaneously (the "Monkey Knife Fight" problem).
 
 **1. Check slot availability:**
 ```bash
@@ -161,21 +162,21 @@ Using `temp-resolve` as the local branch name keeps things clear.
 **4. Verify the branch state:**
 ```bash
 git log --oneline -5        # Recent commits
-git log origin/main..HEAD   # Commits not on main
+git log origin/{{base_branch}}..HEAD   # Commits not on {{base_branch}}
 ```
 
-**Exit criteria:** On temp-resolve branch, ready to rebase."""
+**Exit criteria:** On temp-resolve branch, ready to merge target and resolve conflicts."""
 
 [[steps]]
-id = "rebase-resolve"
-title = "Rebase onto main and resolve conflicts"
+id = "merge-resolve"
+title = "Merge base branch and resolve conflicts"
 needs = ["checkout-branch"]
 description = """
-Perform the rebase and resolve any conflicts.
+Merge the target into the branch without rewriting branch history and resolve any conflicts.
 
-**1. Start the rebase:**
+**1. Start the merge:**
 ```bash
-git rebase origin/main
+git merge --no-ff origin/{{base_branch}}
 ```
 
 **2. If conflicts occur:**
@@ -195,7 +196,7 @@ git diff                    # See conflict markers
 **After resolving each file:**
 ```bash
 git add <resolved-file>
-git rebase --continue
+git commit
 ```
 
 **3. If stuck on a conflict:**
@@ -207,18 +208,18 @@ git rebase --continue
   Issue: Cannot determine correct resolution"
   ```
 
-**4. Verify rebase success:**
+**4. Verify merge success:**
 ```bash
-git log --oneline origin/main..HEAD   # Your commits rebased
+git log --oneline origin/{{base_branch}}..HEAD   # Your commits plus merge resolution
 git status                            # Clean working tree
 ```
 
-**Exit criteria:** Branch successfully rebased onto origin/main."""
+**Exit criteria:** Branch successfully merged origin/{{base_branch}} without rewriting submitted history."""
 
 [[steps]]
 id = "run-tests"
 title = "Run tests to verify resolution"
-needs = ["rebase-resolve"]
+needs = ["merge-resolve"]
 description = """
 Verify the resolution doesn't break anything.
 
@@ -235,9 +236,9 @@ go test ./...               # Or appropriate test command
 - If pre-existing: file a bead, but still must fix before pushing
 
 ```bash
-# Quick check: does main pass?
+# Quick check: does {{base_branch}} pass?
 git stash
-git checkout origin/main
+git checkout origin/{{base_branch}}
 go test ./...
 git checkout temp-resolve
 git stash pop
@@ -252,66 +253,53 @@ go build ./...
 
 [[steps]]
 id = "push-to-main"
-title = "Push resolved changes directly to main"
+title = "Push resolved MR branch"
 needs = ["run-tests"]
 description = """
-Push the resolved branch directly to main.
+Push the resolved branch back to {{branch}} for the Refinery to retry.
 
-**Important:** Unlike normal polecat work, conflict resolution pushes directly
-to main. This is because:
-1. The original MR was already reviewed/approved by being in the queue
-2. We're just resolving conflicts, not adding new functionality
-3. Going back through the queue would create an infinite loop
+**Important:** Do not push directly to {{base_branch}} and do not close the MR
+or source issue yourself. The Refinery must run its verified post-merge cleanup.
 
-**1. Rebase one more time (in case main moved):**
+**1. Merge target one more time (in case it moved):**
 ```bash
 git fetch origin
-git rebase origin/main
+git merge --no-ff origin/{{base_branch}}
 ```
 
-If new conflicts: resolve them (return to rebase-resolve step).
+If new conflicts: resolve them (return to merge-resolve step).
 
-**2. Push to main:**
+**2. Push resolved branch:**
 ```bash
-git push origin temp-resolve:main
+git push origin temp-resolve:{{branch}}
 ```
 
 **3. Verify the push:**
 ```bash
-git log origin/main --oneline -3    # Your commits should be there
+git ls-remote --heads origin {{branch}}        # Branch should exist on origin
 ```
 
-**Exit criteria:** Changes are on origin/main."""
+**Exit criteria:** Resolved branch is on origin/{{branch}} for refinery retry."""
 
 [[steps]]
 id = "close-beads"
-title = "Close the original MR bead and this task"
+title = "Close this conflict-resolution task"
 needs = ["push-to-main"]
 description = """
-Close the beads to complete the work chain.
+Close only the conflict-resolution task. Leave the original MR and source issue
+open; the Refinery closes them only after verified post-merge proof.
 
-**1. Close the original MR bead:**
+**1. Close this task:**
 ```bash
-bd close {{original_mr}} --reason="merged after conflict resolution"
+bd close {{task}} --reason="resolved conflicts on {{branch}}"
 ```
 
-This completes the MR that was blocked on conflicts.
-
-**2. Close the source issue (if not already closed):**
-```bash
-bd show <source-issue>      # Check status
-bd close <source-issue> --reason="merged via conflict resolution"
-```
-
-The Refinery normally closes issues after merge, but since we pushed
-directly to main, we handle it here.
-
-**3. Sync beads:**
+**2. Sync beads:**
 ```bash
 bd sync
 ```
 
-**Exit criteria:** Original MR and source issue are closed."""
+**Exit criteria:** Conflict-resolution task is closed; original MR remains queued."""
 
 [[steps]]
 id = "release-slot"
@@ -345,10 +333,10 @@ Clean up workspace and close the conflict resolution task.
 
 **1. Clean up local branch:**
 ```bash
-git checkout main
+git checkout {{base_branch}}
 git branch -D temp-resolve
 git fetch origin
-git reset --hard origin/main
+git reset --hard origin/{{base_branch}}
 ```
 
 **2. Verify clean state:**
@@ -359,7 +347,7 @@ git stash list              # Empty
 
 **3. Close this task:**
 ```bash
-bd close {{task}} --reason="Conflicts resolved and merged to main"
+bd close {{task}} --reason="Conflicts resolved on {{branch}}"
 ```
 
 **4. Signal completion:**
@@ -381,5 +369,9 @@ description = "The original MR bead ID (extracted from task metadata)"
 required = true
 
 [vars.branch]
-description = "The branch to rebase (extracted from task metadata)"
+description = "The branch to merge target into (extracted from task metadata)"
 required = true
+
+[vars.base_branch]
+description = "The base branch to merge from (e.g., main, integration/epic-id)"
+default = "main"

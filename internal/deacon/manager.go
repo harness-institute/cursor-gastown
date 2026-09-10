@@ -7,11 +7,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/config"
-	"github.com/cursorworkshop/cursor-gastown/internal/cursor"
-	"github.com/cursorworkshop/cursor-gastown/internal/constants"
-	"github.com/cursorworkshop/cursor-gastown/internal/session"
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/nudge"
+	"github.com/harness-institute/cursor-gastown/internal/runtime"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // Common errors
@@ -20,15 +21,41 @@ var (
 	ErrAlreadyRunning = errors.New("deacon already running")
 )
 
+// tmuxOps abstracts tmux operations for testing.
+type tmuxOps interface {
+	HasSession(name string) (bool, error)
+	IsAgentAlive(session string) bool
+	KillSessionWithProcesses(name string) error
+	NewSessionWithCommand(name, workDir, command string) error
+	NewSessionWithCommandAndEnv(name, workDir, command string, env map[string]string) error
+	SetRemainOnExit(pane string, on bool) error
+	SetEnvironment(session, key, value string) error
+	GetPaneID(session string) (string, error)
+	ConfigureGasTownSession(session string, theme *tmux.Theme, rig, worker, role string) error
+	WaitForCommand(session string, excludeCommands []string, timeout time.Duration) error
+	SetAutoRespawnHook(session string) error
+	AcceptStartupDialogs(session string) error
+	AcceptWorkspaceTrustDialog(session string) error
+	AcceptBypassPermissionsWarning(session string) error
+	SendKeysRaw(session, keys string) error
+	GetSessionInfo(name string) (*tmux.SessionInfo, error)
+}
+
 // Manager handles deacon lifecycle operations.
 type Manager struct {
-	townRoot string
+	townRoot    string
+	tmux        tmuxOps
+	startPoller func(townRoot, session string) (int, error)
+	stopPoller  func(townRoot, session string) error
 }
 
 // NewManager creates a new deacon manager for a town.
 func NewManager(townRoot string) *Manager {
 	return &Manager{
-		townRoot: townRoot,
+		townRoot:    townRoot,
+		tmux:        tmux.NewTmux(),
+		startPoller: nudge.StartPoller,
+		stopPoller:  nudge.StopPoller,
 	}
 }
 
@@ -48,21 +75,46 @@ func (m *Manager) deaconDir() string {
 	return filepath.Join(m.townRoot, "deacon")
 }
 
+func (m *Manager) startNudgePoller(sessionID string) {
+	if m.startPoller == nil {
+		return
+	}
+	if _, pollerErr := m.startPoller(m.townRoot, sessionID); pollerErr != nil {
+		fmt.Printf("warning: could not start nudge poller for %s: %v\n", sessionID, pollerErr)
+	}
+}
+
+func (m *Manager) stopNudgePoller(sessionID string) {
+	if m.stopPoller == nil {
+		return
+	}
+	if pollerErr := m.stopPoller(m.townRoot, sessionID); pollerErr != nil {
+		fmt.Printf("warning: could not stop nudge poller for %s: %v\n", sessionID, pollerErr)
+	}
+}
+
 // Start starts the deacon session.
-// The deacon runs in a respawn loop for automatic recovery.
-func (m *Manager) Start() error {
-	t := tmux.NewTmux()
+// agentOverride allows specifying an alternate agent alias (e.g., for testing).
+// Restarts are handled by daemon via ensureDeaconRunning on each heartbeat.
+func (m *Manager) Start(agentOverride string) error {
+	t := m.tmux
 	sessionID := m.SessionName()
 
 	// Check if session already exists
 	running, _ := t.HasSession(sessionID)
 	if running {
-		// Session exists - check if Cursor is actually running (healthy vs zombie)
-		if t.IsCursorRunning(sessionID) {
+		// Session exists - check if agent is actually running (healthy vs zombie)
+		if t.IsAgentAlive(sessionID) {
+			m.startNudgePoller(sessionID)
 			return ErrAlreadyRunning
 		}
-		// Zombie - tmux alive but Cursor dead. Kill and recreate.
-		if err := t.KillSession(sessionID); err != nil {
+
+		// Session exists but agent is dead. Kill and recreate uniformly.
+		// The auto-respawn hook (SetAutoRespawnHook) handles clean exits at the
+		// tmux level — Go doesn't need to distinguish dead pane vs zombie shell.
+		// Use KillSessionWithProcesses to ensure all descendant processes are killed.
+		m.stopNudgePoller(sessionID)
+		if err := t.KillSessionWithProcesses(sessionID); err != nil {
 			return fmt.Errorf("killing zombie session: %w", err)
 		}
 	}
@@ -73,57 +125,94 @@ func (m *Manager) Start() error {
 		return fmt.Errorf("creating deacon directory: %w", err)
 	}
 
-	// Ensure Cursor settings exist
-	if err := cursor.EnsureSettingsForRole(deaconDir, "deacon"); err != nil {
-		return fmt.Errorf("ensuring Cursor settings: %w", err)
+	// Ensure runtime settings exist in deaconDir where session runs.
+	runtimeConfig := config.ResolveRoleAgentConfig("deacon", m.townRoot, deaconDir)
+	if err := runtime.EnsureSettingsForRole(deaconDir, deaconDir, "deacon", runtimeConfig); err != nil {
+		return fmt.Errorf("ensuring runtime settings: %w", err)
 	}
 
-	// Create new tmux session
-	if err := t.NewSession(sessionID, deaconDir); err != nil {
+	initialPrompt := session.BuildStartupPrompt(session.BeaconConfig{
+		Recipient: "deacon",
+		Sender:    "daemon",
+		Topic:     "patrol",
+	}, "I am Deacon. Start patrol: run gt deacon heartbeat, then check gt hook. If no hook, run gt sling mol-deacon-patrol deacon, then execute the hook it creates.")
+	startupCmd, err := config.BuildStartupCommandFromConfig(config.AgentEnvConfig{
+		Role:        "deacon",
+		TownRoot:    m.townRoot,
+		Prompt:      initialPrompt,
+		Topic:       "patrol",
+		SessionName: sessionID,
+	}, "", initialPrompt, agentOverride)
+	if err != nil {
+		return fmt.Errorf("building startup command: %w", err)
+	}
+
+	// Compute env vars BEFORE session creation so they reach Claude's
+	// subprocesses (e.g., bd) via tmux -e flags. SetEnvironment after creation
+	// only affects newly spawned panes, not the running pane's tree (gt-neycp).
+	envVars := config.AgentEnv(config.AgentEnvConfig{
+		Role:        "deacon",
+		TownRoot:    m.townRoot,
+		Agent:       agentOverride,
+		SessionName: sessionID,
+	})
+	envVars = session.MergeRuntimeLivenessEnv(envVars, runtimeConfig)
+
+	// Create session with command and env vars via -e flags so the initial
+	// shell (and subprocesses Claude spawns) inherit them from the start.
+	// See: https://github.com/anthropics/gastown/issues/280 (race condition fix)
+	if err := t.NewSessionWithCommandAndEnv(sessionID, deaconDir, startupCmd, envVars); err != nil {
 		return fmt.Errorf("creating tmux session: %w", err)
 	}
 
-	// Set environment variables (non-fatal: session works without these)
-	_ = t.SetEnvironment(sessionID, "GT_ROLE", "deacon")
-	_ = t.SetEnvironment(sessionID, "BD_ACTOR", "deacon")
+	// PATCH-010: Set remain-on-exit IMMEDIATELY after session creation.
+	// This ensures the pane stays if Claude exits before hooks are fully set.
+	// The pane will show "[Exited]" status but remain available for respawn.
+	_ = t.SetRemainOnExit(sessionID, true)
+
+	// Record agent's pane_id for ZFC-compliant liveness checks (gt-qmsx).
+	if paneID, err := t.GetPaneID(sessionID); err == nil {
+		_ = t.SetEnvironment(sessionID, "GT_PANE_ID", paneID)
+	}
 
 	// Apply Deacon theming (non-fatal: theming failure doesn't affect operation)
-	theme := tmux.DeaconTheme()
+	theme := tmux.ResolveSessionTheme(m.townRoot, "", "deacon", "")
 	_ = t.ConfigureGasTownSession(sessionID, theme, "", "Deacon", "health-check")
 
-	// Launch Cursor in a respawn loop for automatic recovery
-	// The respawn loop ensures the deacon restarts if Cursor crashes
-	runtimeCmd := config.GetRuntimeCommand("")
-	respawnCmd := fmt.Sprintf(
-		`export GT_ROLE=deacon BD_ACTOR=deacon GIT_AUTHOR_NAME=deacon && while true; do echo "⛪ Starting Deacon session..."; %s; echo ""; echo "Deacon exited. Restarting in 2s... (Ctrl-C to stop)"; sleep 2; done`,
-		runtimeCmd,
-	)
-
-	if err := t.SendKeysDelayed(sessionID, respawnCmd, 200); err != nil {
-		_ = t.KillSession(sessionID) // best-effort cleanup
-		return fmt.Errorf("starting Cursor agent: %w", err)
+	// Wait for Claude to start - fatal if Claude fails to launch
+	if err := t.WaitForCommand(sessionID, constants.SupportedShells, constants.ClaudeStartTimeout); err != nil {
+		// Kill the zombie session before returning error
+		_ = t.KillSessionWithProcesses(sessionID)
+		return fmt.Errorf("waiting for deacon to start: %w", err)
 	}
 
-	// Wait for Cursor to start (non-fatal)
-	// Note: Deacon respawn loop makes this tricky - Cursor restarts multiple times
-	if err := t.WaitForCommand(sessionID, constants.SupportedShells, constants.CursorStartTimeout); err != nil {
-		// Non-fatal - try to continue anyway
+	// Track PID for defense-in-depth orphan cleanup (non-fatal)
+	if realTmux, ok := t.(*tmux.Tmux); ok {
+		_ = session.TrackSessionPID(m.townRoot, sessionID, realTmux)
 	}
 
-	// Accept bypass permissions warning dialog if it appears.
-	_ = t.AcceptBypassPermissionsWarning(sessionID)
+	// PATCH-010: Set auto-respawn hook for Deacon resilience.
+	// When Claude exits (for any reason), tmux will automatically respawn it.
+	// This prevents the crash loop where daemon repeatedly restarts Deacon.
+	// Note: SetAutoRespawnHook calls SetRemainOnExit again (harmless, already set above).
+	if err := t.SetAutoRespawnHook(sessionID); err != nil {
+		// Non-fatal: Deacon still works, just won't auto-respawn on crash
+		// Daemon will still restart it, but with a delay
+		fmt.Printf("warning: failed to set auto-respawn hook for deacon: %v\n", err)
+	}
+
+	// Accept startup dialogs (workspace trust + bypass permissions) if they appear.
+	_ = t.AcceptStartupDialogs(sessionID)
+	m.startNudgePoller(sessionID)
 
 	time.Sleep(constants.ShutdownNotifyDelay)
-
-	// Note: Deacon doesn't get startup nudge due to respawn loop complexity
-	// The deacon uses its own patrol pattern defined in its role config/prime
 
 	return nil
 }
 
 // Stop stops the deacon session.
 func (m *Manager) Stop() error {
-	t := tmux.NewTmux()
+	t := m.tmux
 	sessionID := m.SessionName()
 
 	// Check if session exists
@@ -135,12 +224,16 @@ func (m *Manager) Stop() error {
 		return ErrNotRunning
 	}
 
+	m.stopNudgePoller(sessionID)
+
 	// Try graceful shutdown first (best-effort interrupt)
 	_ = t.SendKeysRaw(sessionID, "C-c")
 	time.Sleep(100 * time.Millisecond)
 
-	// Kill the session
-	if err := t.KillSession(sessionID); err != nil {
+	// Kill the session.
+	// Use KillSessionWithProcesses to ensure all descendant processes are killed.
+	// This prevents orphan bash processes from Claude's Bash tool surviving session termination.
+	if err := t.KillSessionWithProcesses(sessionID); err != nil {
 		return fmt.Errorf("killing session: %w", err)
 	}
 
@@ -149,13 +242,12 @@ func (m *Manager) Stop() error {
 
 // IsRunning checks if the deacon session is active.
 func (m *Manager) IsRunning() (bool, error) {
-	t := tmux.NewTmux()
-	return t.HasSession(m.SessionName())
+	return m.tmux.HasSession(m.SessionName())
 }
 
 // Status returns information about the deacon session.
 func (m *Manager) Status() (*tmux.SessionInfo, error) {
-	t := tmux.NewTmux()
+	t := m.tmux
 	sessionID := m.SessionName()
 
 	running, err := t.HasSession(sessionID)

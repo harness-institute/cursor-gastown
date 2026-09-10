@@ -7,21 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/util"
-)
-
-// State represents an agent's running state.
-type State string
-
-const (
-	// StateStopped means the agent is not running.
-	StateStopped State = "stopped"
-
-	// StateRunning means the agent is actively operating.
-	StateRunning State = "running"
-
-	// StatePaused means the agent is paused (not operating but not stopped).
-	StatePaused State = "paused"
+	"github.com/harness-institute/cursor-gastown/internal/atomicfile"
 )
 
 // StateManager handles loading and saving agent state to disk.
@@ -72,5 +58,5 @@ func (m *StateManager[T]) Save(state *T) error {
 		return err
 	}
 
-	return util.AtomicWriteJSON(m.stateFilePath, state)
+	return atomicfile.WriteJSON(m.stateFilePath, state)
 }

@@ -13,81 +13,85 @@ builds:
     main: ./cmd/gt
     binary: gt
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     goos:
       - linux
     goarch:
       - amd64
     ldflags:
       - -s -w
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Version={{.Version}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Build={{.ShortCommit}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Commit={{.Commit}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Branch={{.Branch}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Version={{.Version}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Build={{.ShortCommit}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Commit={{.Commit}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Branch={{.Branch}}
 
   - id: gt-linux-arm64
     main: ./cmd/gt
     binary: gt
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
+      - CC=aarch64-linux-gnu-gcc
+      - CXX=aarch64-linux-gnu-g++
     goos:
       - linux
     goarch:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Version={{.Version}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Build={{.ShortCommit}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Commit={{.Commit}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Branch={{.Branch}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Version={{.Version}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Build={{.ShortCommit}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Commit={{.Commit}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Branch={{.Branch}}
 
   - id: gt-darwin-amd64
     main: ./cmd/gt
     binary: gt
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     goos:
       - darwin
     goarch:
       - amd64
     ldflags:
       - -s -w
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Version={{.Version}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Build={{.ShortCommit}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Commit={{.Commit}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Branch={{.Branch}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Version={{.Version}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Build={{.ShortCommit}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Commit={{.Commit}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Branch={{.Branch}}
 
   - id: gt-darwin-arm64
     main: ./cmd/gt
     binary: gt
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     goos:
       - darwin
     goarch:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Version={{.Version}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Build={{.ShortCommit}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Commit={{.Commit}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Branch={{.Branch}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Version={{.Version}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Build={{.ShortCommit}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Commit={{.Commit}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Branch={{.Branch}}
 
   - id: gt-windows-amd64
     main: ./cmd/gt
     binary: gt
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
+      - CC=x86_64-w64-mingw32-gcc
+      - CXX=x86_64-w64-mingw32-g++
     goos:
       - windows
     goarch:
       - amd64
     ldflags:
       - -s -w
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Version={{.Version}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Build={{.ShortCommit}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Commit={{.Commit}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Branch={{.Branch}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Version={{.Version}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Build={{.ShortCommit}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Commit={{.Commit}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Branch={{.Branch}}
       - -buildmode=exe
 
   - id: gt-freebsd-amd64
@@ -101,25 +105,25 @@ builds:
       - amd64
     ldflags:
       - -s -w
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Version={{.Version}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Build={{.ShortCommit}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Commit={{.Commit}}
-      - -X github.com/cursorworkshop/cursor-gastown/internal/cmd.Branch={{.Branch}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Version={{.Version}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Build={{.ShortCommit}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Commit={{.Commit}}
+      - -X github.com/harness-institute/cursor-gastown/internal/cmd.Branch={{.Branch}}
 
 
 archives:
   - id: gt-archive
-    format: tar.gz
+    formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - LICENSE
       - README.md
 
 checksum:
-  name_template: "checksums.txt"
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
   algorithm: sha256
 
 snapshot:
@@ -146,21 +150,27 @@ changelog:
 
 release:
   github:
-    owner: cursorworkshop
-    name: cursor-gastown
+    owner: gastownhall
+    name: gastown
   draft: false
   prerelease: auto
+  replace_existing_artifacts: true
   name_template: "v{{.Version}}"
   header: |
-    ## Cursor Gas Town v{{.Version}}
+    ## Gas Town v{{.Version}}
 
     Pre-compiled binaries for Linux, macOS (Intel & Apple Silicon), and Windows.
 
     ### Installation
 
+    **Homebrew (macOS/Linux):**
+    ```bash
+    brew install gastown
+    ```
+
     **npm (Node.js):**
     ```bash
-    npm install -g @cursorworkshop/cursor-gastown
+    npm install -g @gastown/gt
     ```
 
     **Manual Install:**

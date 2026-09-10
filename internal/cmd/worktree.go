@@ -5,13 +5,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/config"
-	"github.com/cursorworkshop/cursor-gastown/internal/constants"
-	"github.com/cursorworkshop/cursor-gastown/internal/git"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/git"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // Worktree command flags
@@ -126,7 +127,7 @@ func runWorktree(cmd *cobra.Command, args []string) error {
 		if worktreeNoCD {
 			fmt.Println(worktreePath)
 		} else {
-			fmt.Printf("%s Worktree already exists at %s\n", style.Success.Render("OK"), worktreePath)
+			fmt.Printf("%s Worktree already exists at %s\n", style.Success.Render("✓"), worktreePath)
 			fmt.Printf("cd %s\n", worktreePath)
 		}
 		return nil
@@ -147,7 +148,7 @@ func runWorktree(cmd *cobra.Command, args []string) error {
 	// Fetch latest from remote before creating worktree
 	if err := g.Fetch("origin"); err != nil {
 		// Non-fatal - continue with local state
-		fmt.Printf("%s Warning: could not fetch from origin: %v\n", style.Warning.Render("WARN"), err)
+		fmt.Printf("%s Warning: could not fetch from origin: %v\n", style.Warning.Render("⚠"), err)
 	}
 
 	// Create the worktree on main branch
@@ -163,10 +164,10 @@ func runWorktree(cmd *cobra.Command, args []string) error {
 
 	// Set local git config for this worktree
 	if err := setGitConfig(worktreePath, "user.name", bdActor); err != nil {
-		fmt.Printf("%s Warning: could not set git author name: %v\n", style.Warning.Render("WARN"), err)
+		fmt.Printf("%s Warning: could not set git author name: %v\n", style.Warning.Render("⚠"), err)
 	}
 
-	fmt.Printf("%s Created worktree for cross-rig work\n", style.Success.Render("OK"))
+	fmt.Printf("%s Created worktree for cross-rig work\n", style.Success.Render("✓"))
 	fmt.Printf("  Source: %s/crew/%s\n", sourceRig, crewName)
 	fmt.Printf("  Target: %s\n", worktreePath)
 	fmt.Printf("  Branch: main\n")
@@ -174,7 +175,7 @@ func runWorktree(cmd *cobra.Command, args []string) error {
 
 	// Pull latest main in the new worktree
 	if err := worktreeGit.Pull("origin", "main"); err != nil {
-		fmt.Printf("%s Warning: could not pull latest: %v\n", style.Warning.Render("WARN"), err)
+		fmt.Printf("%s Warning: could not pull latest: %v\n", style.Warning.Render("⚠"), err)
 	}
 
 	if worktreeNoCD {
@@ -184,10 +185,17 @@ func runWorktree(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  cd %s\n", worktreePath)
 		fmt.Println()
 		fmt.Printf("Environment variables to preserve your identity:\n")
-		fmt.Printf("  export BD_ACTOR=%s\n", bdActor)
-		fmt.Printf("  export GT_ROLE=crew\n")
-		fmt.Printf("  export GT_RIG=%s\n", sourceRig)
-		fmt.Printf("  export GT_CREW=%s\n", crewName)
+		if runtime.GOOS == "windows" {
+			fmt.Printf("  $env:BD_ACTOR=%s\n", bdActor)
+			fmt.Printf("  $env:GT_ROLE=crew\n")
+			fmt.Printf("  $env:GT_RIG=%s\n", sourceRig)
+			fmt.Printf("  $env:GT_CREW=%s\n", crewName)
+		} else {
+			fmt.Printf("  export BD_ACTOR=%s\n", bdActor)
+			fmt.Printf("  export GT_ROLE=crew\n")
+			fmt.Printf("  export GT_RIG=%s\n", sourceRig)
+			fmt.Printf("  export GT_CREW=%s\n", crewName)
+		}
 	}
 
 	return nil
@@ -334,7 +342,7 @@ func runWorktreeRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("removing worktree: %w", err)
 	}
 
-	fmt.Printf("%s Removed worktree at %s\n", style.Success.Render("OK"), worktreePath)
+	fmt.Printf("%s Removed worktree at %s\n", style.Success.Render("✓"), worktreePath)
 
 	return nil
 }

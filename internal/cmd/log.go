@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/townlog"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/events"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/townlog"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // Log command flags
@@ -20,6 +21,7 @@ var (
 	logAgent  string
 	logSince  string
 	logFollow bool
+	logAcp    bool
 
 	// log crash flags
 	crashAgent    string
@@ -75,6 +77,7 @@ func init() {
 	logCmd.Flags().StringVarP(&logAgent, "agent", "a", "", "Filter by agent prefix (e.g., gastown/, greenplace/crew/max)")
 	logCmd.Flags().StringVar(&logSince, "since", "", "Show events since duration (e.g., 1h, 30m, 24h)")
 	logCmd.Flags().BoolVarP(&logFollow, "follow", "f", false, "Follow log output (like tail -f)")
+	logCmd.Flags().BoolVar(&logAcp, "acp", false, "View ACP debug logs (requires GT_ACP_DEBUG=1)")
 
 	// crash subcommand flags
 	logCrashCmd.Flags().StringVar(&crashAgent, "agent", "", "Agent ID (e.g., greenplace/Toast)")
@@ -90,6 +93,11 @@ func runLog(cmd *cobra.Command, args []string) error {
 	townRoot, err := workspace.FindFromCwdOrError()
 	if err != nil {
 		return fmt.Errorf("not in a Gas Town workspace: %w", err)
+	}
+
+	// Handle --acp flag to view ACP debug logs
+	if logAcp {
+		return viewACPLogs(townRoot)
 	}
 
 	logPath := fmt.Sprintf("%s/logs/town.log", townRoot)
@@ -178,6 +186,44 @@ func followLog(logPath string) error {
 	return tailCmd.Run()
 }
 
+// viewACPLogs displays the ACP debug log file.
+func viewACPLogs(townRoot string) error {
+	logPath := fmt.Sprintf("%s/logs/acp.log", townRoot)
+
+	// If following, use tail -f
+	if logFollow {
+		return followLog(logPath)
+	}
+
+	// Check if log file exists
+	if _, err := os.Stat(logPath); os.IsNotExist(err) {
+		fmt.Printf("%s No ACP log file. Set GT_ACP_DEBUG=1 to enable logging.\n", style.Dim.Render("○"))
+		return nil
+	}
+
+	// Read the log file
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		return fmt.Errorf("reading ACP log: %w", err)
+	}
+
+	lines := strings.Split(string(content), "\n")
+
+	// Apply tail limit
+	if logTail > 0 && len(lines) > logTail {
+		lines = lines[len(lines)-logTail:]
+	}
+
+	// Print lines
+	for _, line := range lines {
+		if line != "" {
+			fmt.Println(line)
+		}
+	}
+
+	return nil
+}
+
 // printEvent prints a single event with styling.
 func printEvent(e townlog.Event) {
 	ts := e.Timestamp.Format("2006-01-02 15:04:05")
@@ -193,6 +239,8 @@ func printEvent(e townlog.Event) {
 		typeStr = style.Dim.Render("[nudge]")
 	case townlog.EventHandoff:
 		typeStr = style.Bold.Render("[handoff]")
+	case townlog.EventHandoffNoPersist:
+		typeStr = style.Error.Render("[handoff-NOPERSIST]")
 	case townlog.EventDone:
 		typeStr = style.Success.Render("[done]")
 	case townlog.EventCrash:
@@ -242,6 +290,11 @@ func formatEventDetail(e townlog.Event) string {
 			return fmt.Sprintf("handed off (%s)", e.Context)
 		}
 		return "handed off"
+	case townlog.EventHandoffNoPersist:
+		if e.Context != "" {
+			return fmt.Sprintf("handoff FAILED (%s)", e.Context)
+		}
+		return "handoff FAILED (no persist)"
 	case townlog.EventDone:
 		if e.Context != "" {
 			return fmt.Sprintf("completed %s", e.Context)
@@ -347,8 +400,33 @@ func runLogCrash(cmd *cobra.Command, args []string) error {
 	if err := logger.Log(eventType, crashAgent, context); err != nil {
 		return fmt.Errorf("logging event: %w", err)
 	}
+	if eventType == townlog.EventCrash {
+		logCrashFeedEvent(townRoot, crashAgent, crashSession, crashExitCode)
+	}
 
 	return nil
+}
+
+func logCrashFeedEvent(townRoot, agent, session string, exitCode int) {
+	if townRoot == "" {
+		return
+	}
+	if session == "" {
+		session = "unknown"
+	}
+
+	origDir, getwdErr := os.Getwd()
+	if err := os.Chdir(townRoot); err != nil {
+		return
+	}
+	if getwdErr == nil {
+		defer func() { _ = os.Chdir(origDir) }()
+	}
+
+	reason := fmt.Sprintf("crashed with exit code %d", exitCode)
+	payload := events.SessionDeathPayload(session, agent, reason, "gt log crash")
+	payload["exit_code"] = exitCode
+	_ = events.LogFeed(events.TypeSessionDeath, agent, payload)
 }
 
 // LogEvent is a helper that logs an event from anywhere in the codebase.
@@ -392,6 +470,17 @@ func LogNudge(townRoot, agent, message string) error {
 // LogHandoff logs a handoff event.
 func LogHandoff(townRoot, agent, context string) error {
 	return LogEventWithRoot(townRoot, townlog.EventHandoff, agent, context)
+}
+
+// LogHandoffNoPersist logs a failed handoff where Dolt persistence failed.
+// Creates a distinct marker in town.log so crash recovery can identify
+// handoffs that were attempted but never persisted to Dolt.
+func LogHandoffNoPersist(townRoot, agent, context string, persistErr error) error {
+	msg := context
+	if persistErr != nil {
+		msg = fmt.Sprintf("%s — error: %v", context, persistErr)
+	}
+	return LogEventWithRoot(townRoot, townlog.EventHandoffNoPersist, agent, msg)
 }
 
 // LogDone logs a done event.

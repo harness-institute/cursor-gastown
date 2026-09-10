@@ -11,6 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/harness-institute/cursor-gastown/internal/runtime"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 // Filename is the checkpoint file name within the polecat directory.
@@ -84,7 +87,7 @@ func Write(polecatDir string, cp *Checkpoint) error {
 
 	// Set session ID from environment if available
 	if cp.SessionID == "" {
-		cp.SessionID = os.Getenv("CURSOR_SESSION_ID")
+		cp.SessionID = runtime.SessionIDFromEnv()
 		if cp.SessionID == "" {
 			cp.SessionID = fmt.Sprintf("pid-%d", os.Getpid())
 		}
@@ -121,6 +124,7 @@ func Capture(polecatDir string) (*Checkpoint, error) {
 	// Get modified files from git status
 	cmd := exec.Command("git", "status", "--porcelain")
 	cmd.Dir = polecatDir
+	util.SetDetachedProcessGroup(cmd)
 	output, err := cmd.Output()
 	if err == nil {
 		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
@@ -138,6 +142,7 @@ func Capture(polecatDir string) (*Checkpoint, error) {
 	// Get last commit SHA
 	cmd = exec.Command("git", "rev-parse", "HEAD")
 	cmd.Dir = polecatDir
+	util.SetDetachedProcessGroup(cmd)
 	output, err = cmd.Output()
 	if err == nil {
 		cp.LastCommit = strings.TrimSpace(string(output))
@@ -146,6 +151,7 @@ func Capture(polecatDir string) (*Checkpoint, error) {
 	// Get current branch
 	cmd = exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
 	cmd.Dir = polecatDir
+	util.SetDetachedProcessGroup(cmd)
 	output, err = cmd.Output()
 	if err == nil {
 		cp.Branch = strings.TrimSpace(string(output))
@@ -179,9 +185,9 @@ func (cp *Checkpoint) Age() time.Duration {
 	return time.Since(cp.Timestamp)
 }
 
-// IsStale returns true if the checkpoint is older than the threshold.
+// IsStale returns true if the checkpoint is at or older than the threshold.
 func (cp *Checkpoint) IsStale(threshold time.Duration) bool {
-	return cp.Age() > threshold
+	return cp.Age() >= threshold
 }
 
 // Summary returns a concise summary of the checkpoint.

@@ -2,11 +2,12 @@ package web
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/activity"
+	"github.com/harness-institute/cursor-gastown/internal/activity"
 )
 
 func TestConvoyTemplate_RendersConvoyList(t *testing.T) {
@@ -18,21 +19,21 @@ func TestConvoyTemplate_RendersConvoyList(t *testing.T) {
 	data := ConvoyData{
 		Convoys: []ConvoyRow{
 			{
-				ID:       "hq-cv-abc",
-				Title:    "Feature X",
-				Status:   "open",
-				Progress: "2/5",
-				Completed: 2,
-				Total:    5,
+				ID:           "hq-cv-abc",
+				Title:        "Feature X",
+				Status:       "open",
+				Progress:     "2/5",
+				Completed:    2,
+				Total:        5,
 				LastActivity: activity.Calculate(time.Now().Add(-1 * time.Minute)),
 			},
 			{
-				ID:       "hq-cv-def",
-				Title:    "Bugfix Y",
-				Status:   "open",
-				Progress: "1/3",
-				Completed: 1,
-				Total:    3,
+				ID:           "hq-cv-def",
+				Title:        "Bugfix Y",
+				Status:       "open",
+				Progress:     "1/3",
+				Completed:    1,
+				Total:        3,
 				LastActivity: activity.Calculate(time.Now().Add(-3 * time.Minute)),
 			},
 		},
@@ -54,12 +55,18 @@ func TestConvoyTemplate_RendersConvoyList(t *testing.T) {
 		t.Error("Template should contain convoy ID hq-cv-def")
 	}
 
-	// Check titles are rendered
-	if !strings.Contains(output, "Feature X") {
-		t.Error("Template should contain title 'Feature X'")
+	// The simplified dashboard no longer shows convoy titles in the table,
+	// only the convoy IDs. Titles are shown in expanded view.
+}
+
+func TestDashboardScript_SlingUsesLongRunTimeout(t *testing.T) {
+	js, err := os.ReadFile("static/dashboard.js")
+	if err != nil {
+		t.Fatalf("ReadFile(static/dashboard.js) error = %v", err)
 	}
-	if !strings.Contains(output, "Bugfix Y") {
-		t.Error("Template should contain title 'Bugfix Y'")
+
+	if !strings.Contains(string(js), `JSON.stringify({ command: cmd, confirmed: true, timeout: 120 })`) {
+		t.Error("Sling action should request a long /api/run timeout")
 	}
 }
 
@@ -70,13 +77,13 @@ func TestConvoyTemplate_LastActivityColors(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		age        time.Duration
-		wantClass  string
+		name      string
+		age       time.Duration
+		wantClass string
 	}{
 		{"green for 1 minute", 1 * time.Minute, "activity-green"},
-		{"yellow for 3 minutes", 3 * time.Minute, "activity-yellow"},
-		{"red for 10 minutes", 10 * time.Minute, "activity-red"},
+		{"yellow for 6 minutes", 6 * time.Minute, "activity-yellow"},
+		{"red for 11 minutes", 11 * time.Minute, "activity-red"},
 	}
 
 	for _, tt := range tests {
@@ -137,8 +144,11 @@ func TestConvoyTemplate_HtmxAutoRefresh(t *testing.T) {
 	if !strings.Contains(output, "hx-trigger") {
 		t.Error("Template should contain hx-trigger for auto-refresh")
 	}
-	if !strings.Contains(output, "every 10s") {
-		t.Error("Template should refresh every 10 seconds")
+	if !strings.Contains(output, "sse:dashboard-update") {
+		t.Error("Template should contain SSE dashboard-update trigger")
+	}
+	if !strings.Contains(output, "every 30s") {
+		t.Error("Template should contain polling fallback trigger")
 	}
 }
 
@@ -184,14 +194,16 @@ func TestConvoyTemplate_StatusIndicators(t *testing.T) {
 	data := ConvoyData{
 		Convoys: []ConvoyRow{
 			{
-				ID:     "hq-cv-open",
-				Title:  "Open Convoy",
-				Status: "open",
+				ID:         "hq-cv-active",
+				Title:      "Active Convoy",
+				Status:     "open",
+				WorkStatus: "active",
 			},
 			{
-				ID:     "hq-cv-closed",
-				Title:  "Closed Convoy",
-				Status: "closed",
+				ID:         "hq-cv-stuck",
+				Title:      "Stuck Convoy",
+				Status:     "open",
+				WorkStatus: "stuck",
 			},
 		},
 	}
@@ -204,12 +216,12 @@ func TestConvoyTemplate_StatusIndicators(t *testing.T) {
 
 	output := buf.String()
 
-	// Check status indicators
-	if !strings.Contains(output, "status-open") {
-		t.Error("Template should contain status-open class")
+	// Check work status badges are rendered (replaced status-open/closed classes)
+	if !strings.Contains(output, "badge-green") {
+		t.Error("Template should contain badge-green class for active status")
 	}
-	if !strings.Contains(output, "status-closed") {
-		t.Error("Template should contain status-closed class")
+	if !strings.Contains(output, "badge-red") {
+		t.Error("Template should contain badge-red class for stuck status")
 	}
 }
 
@@ -232,7 +244,7 @@ func TestConvoyTemplate_EmptyState(t *testing.T) {
 	output := buf.String()
 
 	// Check for empty state message
-	if !strings.Contains(output, "No convoys") {
+	if !strings.Contains(output, "No active convoys") {
 		t.Error("Template should show empty state message when no convoys")
 	}
 }

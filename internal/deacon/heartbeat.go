@@ -1,5 +1,5 @@
 // Package deacon provides the Deacon agent infrastructure.
-// The Deacon is an agent that monitors Mayor and Witnesses,
+// The Deacon is a Claude agent that monitors Mayor and Witnesses,
 // handles lifecycle requests, and keeps Gas Town running.
 package deacon
 
@@ -8,6 +8,20 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+)
+
+// Heartbeat age thresholds — these are compiled-in defaults.
+// Configurable via operational.deacon.heartbeat_stale_threshold and
+// operational.deacon.heartbeat_very_stale_threshold in settings/config.json.
+const (
+	// HeartbeatStaleThreshold is the age at which a heartbeat is considered stale.
+	HeartbeatStaleThreshold = 5 * time.Minute
+
+	// HeartbeatVeryStaleThreshold is the age at which a heartbeat is considered
+	// very stale, meaning the Deacon should be poked or restarted.
+	// Must be greater than patrol backoff-max (15m) to avoid false positives
+	// during legitimate await-signal sleep.
+	HeartbeatVeryStaleThreshold = 20 * time.Minute
 )
 
 // Heartbeat represents the Deacon's heartbeat file contents.
@@ -55,7 +69,17 @@ func WriteHeartbeat(townRoot string, hb *Heartbeat) error {
 		return err
 	}
 
-	return os.WriteFile(hbFile, data, 0600)
+	if err := os.WriteFile(hbFile, data, 0600); err != nil {
+		return err
+	}
+
+	// Also touch .deacon-heartbeat for backward compatibility with shell scripts
+	// that check this file's mtime for liveness detection (stuck-agent-dog).
+	// These scripts predate heartbeat.json and check mtime, not file contents.
+	legacyFile := filepath.Join(filepath.Dir(hbFile), ".deacon-heartbeat")
+	_ = os.WriteFile(legacyFile, []byte(""), 0644) //nolint:gosec // G306: world-readable liveness file is intentional
+
+	return nil
 }
 
 // ReadHeartbeat reads the Deacon heartbeat from disk.
@@ -88,31 +112,23 @@ func (hb *Heartbeat) Age() time.Duration {
 // IsFresh returns true if the heartbeat is less than 5 minutes old.
 // A fresh heartbeat means the Deacon is actively working or recently finished.
 func (hb *Heartbeat) IsFresh() bool {
-	return hb != nil && hb.Age() < 5*time.Minute
+	return hb != nil && hb.Age() < HeartbeatStaleThreshold
 }
 
-// IsStale returns true if the heartbeat is 5-15 minutes old.
+// IsStale returns true if the heartbeat is 5-20 minutes old.
 // A stale heartbeat may indicate the Deacon is doing a long operation.
 func (hb *Heartbeat) IsStale() bool {
 	if hb == nil {
 		return false
 	}
 	age := hb.Age()
-	return age >= 5*time.Minute && age < 15*time.Minute
+	return age >= HeartbeatStaleThreshold && age < HeartbeatVeryStaleThreshold
 }
 
-// IsVeryStale returns true if the heartbeat is more than 15 minutes old.
+// IsVeryStale returns true if the heartbeat is more than 20 minutes old.
 // A very stale heartbeat means the Deacon should be poked.
 func (hb *Heartbeat) IsVeryStale() bool {
-	return hb == nil || hb.Age() >= 15*time.Minute
-}
-
-// ShouldPoke returns true if the daemon should poke the Deacon.
-// The Deacon should be poked if:
-// - No heartbeat exists
-// - Heartbeat is very stale (>5 minutes)
-func (hb *Heartbeat) ShouldPoke() bool {
-	return hb.IsVeryStale()
+	return hb == nil || hb.Age() >= HeartbeatVeryStaleThreshold
 }
 
 // Touch writes a minimal heartbeat with just the timestamp.

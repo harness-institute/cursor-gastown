@@ -10,11 +10,12 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/constants"
-	"github.com/cursorworkshop/cursor-gastown/internal/lock"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/lock"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // AgentType represents the type of Gas Town agent.
@@ -27,6 +28,8 @@ const (
 	AgentRefinery
 	AgentCrew
 	AgentPolecat
+	AgentPersonal // Non-GT session (user's terminal session)
+	AgentTest     // Session on a gt-test-* socket (integration tests)
 )
 
 // AgentSession represents a categorized tmux session.
@@ -35,6 +38,7 @@ type AgentSession struct {
 	Type      AgentType
 	Rig       string // For rig-specific agents
 	AgentName string // e.g., crew name, polecat name
+	Socket    string // tmux socket name this session lives on
 }
 
 // AgentTypeColors maps agent types to tmux color codes.
@@ -45,31 +49,41 @@ var AgentTypeColors = map[AgentType]string{
 	AgentRefinery: "#[fg=blue]",
 	AgentCrew:     "#[fg=green]",
 	AgentPolecat:  "#[fg=white,dim]",
+	AgentPersonal: "#[fg=magenta]",
+	AgentTest:     "#[fg=yellow,dim]",
+}
+
+// rigTypeOrder defines the display order of rig-level agent types.
+var rigTypeOrder = map[AgentType]int{
+	AgentRefinery: 0,
+	AgentWitness:  1,
+	AgentCrew:     2,
+	AgentPolecat:  3,
 }
 
 // AgentTypeIcons maps agent types to display icons.
-// Uses centralized icons from constants package.
+// Uses centralized emojis from constants package.
 var AgentTypeIcons = map[AgentType]string{
-	AgentMayor:    constants.IconMayor,
-	AgentDeacon:   constants.IconDeacon,
-	AgentWitness:  constants.IconWitness,
-	AgentRefinery: constants.IconRefinery,
-	AgentCrew:     constants.IconCrew,
-	AgentPolecat:  constants.IconPolecat,
+	AgentMayor:    constants.EmojiMayor,
+	AgentDeacon:   constants.EmojiDeacon,
+	AgentWitness:  constants.EmojiWitness,
+	AgentRefinery: constants.EmojiRefinery,
+	AgentCrew:     constants.EmojiCrew,
+	AgentPolecat:  constants.EmojiPolecat,
 }
 
 var agentsCmd = &cobra.Command{
 	Use:     "agents",
 	Aliases: []string{"ag"},
 	GroupID: GroupAgents,
-	Short:   "Switch between Gas Town agent sessions",
-	Long: `Display a popup menu of core Gas Town agent sessions.
+	Short:   "List Gas Town agent sessions",
+	Long: `List Gas Town agent sessions to stdout.
 
 Shows Mayor, Deacon, Witnesses, Refineries, and Crew workers.
 Polecats are hidden (use 'gt polecat list' to see them).
 
-The menu appears as a tmux popup for quick session switching.`,
-	RunE: runAgents,
+Use 'gt agents menu' for an interactive tmux popup menu.`,
+	RunE: runAgentsList,
 }
 
 var agentsListCmd = &cobra.Command{
@@ -79,12 +93,19 @@ var agentsListCmd = &cobra.Command{
 	RunE:  runAgentsList,
 }
 
+var agentsMenuCmd = &cobra.Command{
+	Use:   "menu",
+	Short: "Interactive popup menu for session switching",
+	Long:  `Display a tmux popup menu of Gas Town agent sessions for quick switching.`,
+	RunE:  runAgents,
+}
+
 var agentsCheckCmd = &cobra.Command{
 	Use:   "check",
 	Short: "Check for identity collisions and stale locks",
 	Long: `Check for identity collisions and stale locks.
 
-This command helps detect situations where multiple agent processes
+This command helps detect situations where multiple Claude processes
 think they own the same worker identity.
 
 Output shows:
@@ -120,6 +141,7 @@ func init() {
 	agentsCheckCmd.Flags().BoolVar(&agentsCheckJSON, "json", false, "Output as JSON")
 
 	agentsCmd.AddCommand(agentsListCmd)
+	agentsCmd.AddCommand(agentsMenuCmd)
 	agentsCmd.AddCommand(agentsCheckCmd)
 	agentsCmd.AddCommand(agentsFixCmd)
 	rootCmd.AddCommand(agentsCmd)
@@ -127,83 +149,176 @@ func init() {
 
 // categorizeSession determines the agent type from a session name.
 func categorizeSession(name string) *AgentSession {
-	session := &AgentSession{Name: name}
+	sess := &AgentSession{Name: name}
 
-	// Town-level agents use hq- prefix: hq-mayor, hq-deacon
-	if strings.HasPrefix(name, "hq-") {
-		suffix := strings.TrimPrefix(name, "hq-")
-		if suffix == "mayor" {
-			session.Type = AgentMayor
-			return session
-		}
-		if suffix == "deacon" {
-			session.Type = AgentDeacon
-			return session
-		}
-		return nil // Unknown hq- session
-	}
-
-	// Rig-level agents use gt- prefix
-	if !strings.HasPrefix(name, "gt-") {
+	identity, err := session.ParseSessionName(name)
+	if err != nil {
 		return nil
 	}
 
-	suffix := strings.TrimPrefix(name, "gt-")
+	sess.Rig = identity.Rig
+	sess.AgentName = identity.Name
 
-	// Witness sessions: legacy format gt-witness-<rig> (fallback)
-	if strings.HasPrefix(suffix, "witness-") {
-		session.Type = AgentWitness
-		session.Rig = strings.TrimPrefix(suffix, "witness-")
-		return session
+	switch identity.Role {
+	case session.RoleMayor:
+		sess.Type = AgentMayor
+	case session.RoleDeacon:
+		sess.Type = AgentDeacon
+	case session.RoleWitness:
+		sess.Type = AgentWitness
+	case session.RoleRefinery:
+		sess.Type = AgentRefinery
+	case session.RoleCrew:
+		sess.Type = AgentCrew
+	case session.RolePolecat:
+		sess.Type = AgentPolecat
+	case session.RoleOverseer:
+		return nil // overseer is the human operator, not a display agent
+	default:
+		return nil
 	}
 
-	// Rig-level agents: gt-<rig>-<type> or gt-<rig>-crew-<name>
-	parts := strings.SplitN(suffix, "-", 2)
-	if len(parts) < 2 {
-		return nil // Invalid format
-	}
-
-	session.Rig = parts[0]
-	remainder := parts[1]
-
-	// Check for crew: gt-<rig>-crew-<name>
-	if strings.HasPrefix(remainder, "crew-") {
-		session.Type = AgentCrew
-		session.AgentName = strings.TrimPrefix(remainder, "crew-")
-		return session
-	}
-
-	// Check for other agent types
-	switch remainder {
-	case "witness":
-		session.Type = AgentWitness
-		return session
-	case "refinery":
-		session.Type = AgentRefinery
-		return session
-	}
-
-	// Everything else is a polecat
-	session.Type = AgentPolecat
-	session.AgentName = remainder
-	return session
+	return sess
 }
 
-// getAgentSessions returns all categorized Gas Town sessions.
+// getAgentSessions returns all categorized Gas Town sessions from the town socket.
 func getAgentSessions(includePolecats bool) ([]*AgentSession, error) {
 	t := tmux.NewTmux()
 	sessions, err := t.ListSessions()
 	if err != nil {
 		return nil, err
 	}
+	return filterAndSortSessions(sessions, includePolecats), nil
+}
 
+// socketGroup holds sessions for a single tmux socket.
+type socketGroup struct {
+	Socket   string
+	Sessions []*AgentSession
+}
+
+// findTestSockets scans the tmux socket directory for active gt-test-* sockets.
+// These sockets are created by TestMain in packages that need tmux isolation.
+// Only sockets with a running tmux server (i.e., ListSessions succeeds) are returned.
+func findTestSockets() []string {
+	socketDir := tmux.SocketDir()
+	entries, err := os.ReadDir(socketDir)
+	if err != nil {
+		return nil
+	}
+
+	townSocket := tmux.GetDefaultSocket()
+	var sockets []string
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, "gt-test-") {
+			continue
+		}
+		// Skip if this somehow matches the town socket.
+		if name == townSocket {
+			continue
+		}
+		// Probe the socket: only include it if tmux server is alive.
+		t := tmux.NewTmuxWithSocket(name)
+		if sessions, err := t.ListSessions(); err == nil && len(sessions) > 0 {
+			sockets = append(sockets, name)
+		}
+	}
+	sort.Strings(sockets)
+	return sockets
+}
+
+// getAllSocketSessions lists sessions from all known tmux sockets, categorized
+// and grouped. The town socket's GT agent sessions come first, followed by
+// personal sessions from other sockets (e.g., default), and finally any
+// active test sockets (gt-test-*) when integration tests are running.
+func getAllSocketSessions(includePolecats bool) []socketGroup {
+	townSocket := tmux.GetDefaultSocket()
+
+	// When gt agents menu is invoked via a tmux binding from a non-town
+	// directory (e.g. a personal session), workspace.FindFromCwd fails in
+	// persistentPreRun, InitRegistry is never called, and GetDefaultSocket
+	// returns "". Fall back to GT_TOWN_SOCKET, which EnsureBindingsOnSocket
+	// embeds in the binding command at gt-up time.
+	if townSocket == "" {
+		townSocket = os.Getenv("GT_TOWN_SOCKET")
+	}
+
+	var groups []socketGroup
+
+	// Town socket: GT agent sessions
+	townTmux := tmux.NewTmuxWithSocket(townSocket) // explicit socket avoids default-socket ambiguity
+	if sessions, err := townTmux.ListSessions(); err == nil && len(sessions) > 0 {
+		agents := filterAndSortSessions(sessions, includePolecats)
+		for _, a := range agents {
+			a.Socket = townSocket
+		}
+		if len(agents) > 0 {
+			groups = append(groups, socketGroup{Socket: townSocket, Sessions: agents})
+		}
+	}
+
+	// Other sockets: list personal sessions.
+	// Check the "default" socket if it differs from the town socket.
+	if townSocket != "" && townSocket != "default" {
+		defTmux := tmux.NewTmuxWithSocket("default")
+		if sessions, err := defTmux.ListSessions(); err == nil && len(sessions) > 0 {
+			var personal []*AgentSession
+			for _, name := range sessions {
+				personal = append(personal, &AgentSession{
+					Name:   name,
+					Type:   AgentPersonal,
+					Socket: "default",
+				})
+			}
+			if len(personal) > 0 {
+				groups = append(groups, socketGroup{Socket: "default", Sessions: personal})
+			}
+		}
+	}
+
+	// Test sockets: collect sessions from all gt-test-* sockets into a single
+	// "testing" group. Install keybindings on each so prefix+g works after
+	// switching into a test session.
+	var allTestSessions []*AgentSession
+	for _, sock := range findTestSockets() {
+		t := tmux.NewTmuxWithSocket(sock)
+		sessions, err := t.ListSessions()
+		if err != nil || len(sessions) == 0 {
+			continue
+		}
+		// Test sockets: InitRegistry is already called (we're in a gt process),
+		// so townSocket is not needed here.
+		_ = tmux.EnsureBindingsOnSocket(sock, "")
+
+		for _, name := range sessions {
+			allTestSessions = append(allTestSessions, &AgentSession{
+				Name:   name,
+				Type:   AgentTest,
+				Socket: sock,
+			})
+		}
+	}
+	if len(allTestSessions) > 0 {
+		groups = append(groups, socketGroup{Socket: "testing", Sessions: allTestSessions})
+	}
+
+	return groups
+}
+
+// filterAndSortSessions filters raw session names into categorized, sorted agents.
+func filterAndSortSessions(sessionNames []string, includePolecats bool) []*AgentSession {
 	var agents []*AgentSession
-	for _, name := range sessions {
+	for _, name := range sessionNames {
 		agent := categorizeSession(name)
 		if agent == nil {
 			continue
 		}
 		if agent.Type == AgentPolecat && !includePolecats {
+			continue
+		}
+		// Skip boot sessions (utility session, not a user-facing agent)
+		if agent.Name == session.BootSessionName() {
 			continue
 		}
 		agents = append(agents, agent)
@@ -233,21 +348,26 @@ func getAgentSessions(includePolecats bool) ([]*AgentSession, error) {
 		}
 
 		// Within rig: refinery, witness, crew, polecat
-		typeOrder := map[AgentType]int{
-			AgentRefinery: 0,
-			AgentWitness:  1,
-			AgentCrew:     2,
-			AgentPolecat:  3,
-		}
-		if typeOrder[a.Type] != typeOrder[b.Type] {
-			return typeOrder[a.Type] < typeOrder[b.Type]
+		if rigTypeOrder[a.Type] != rigTypeOrder[b.Type] {
+			return rigTypeOrder[a.Type] < rigTypeOrder[b.Type]
 		}
 
 		// Same type: alphabetical by agent name
 		return a.AgentName < b.AgentName
 	})
 
-	return agents, nil
+	return agents
+}
+
+// testSocketPackage extracts the package name from a gt-test-* socket name.
+// e.g., "gt-test-tmux-12345" -> "tmux", "gt-test-cmd-67890" -> "cmd".
+// Returns the full socket name if the format doesn't match.
+func testSocketPackage(socket string) string {
+	trimmed := strings.TrimPrefix(socket, "gt-test-")
+	if idx := strings.LastIndex(trimmed, "-"); idx > 0 {
+		return trimmed[:idx]
+	}
+	return trimmed
 }
 
 // displayLabel returns the menu display label for an agent.
@@ -268,8 +388,46 @@ func (a *AgentSession) displayLabel() string {
 		return fmt.Sprintf("%s%s %s/crew/%s#[default]", color, icon, a.Rig, a.AgentName)
 	case AgentPolecat:
 		return fmt.Sprintf("%s%s %s/%s#[default]", color, icon, a.Rig, a.AgentName)
+	case AgentPersonal:
+		return fmt.Sprintf("%s%s#[default]", color, a.Name)
+	case AgentTest:
+		pkg := testSocketPackage(a.Socket)
+		return fmt.Sprintf("%s%s #[fg=white,dim](%s)#[default]", color, a.Name, pkg)
 	}
 	return a.Name
+}
+
+// socketDisplayName returns a human-friendly label for a tmux socket.
+// The town socket is labeled "hq" to match the session prefix convention
+// (hq-deacon, hq-mayor). Other sockets use their name as-is.
+func socketDisplayName(socket string) string {
+	if socket == tmux.GetDefaultSocket() {
+		return "hq"
+	}
+	if strings.HasPrefix(socket, "gt-test-") {
+		return "testing"
+	}
+	return socket
+}
+
+// buildMenuAction returns a tmux command string for the display-menu action
+// that handles both same-socket and cross-socket session switching.
+//
+// targetSocket is the socket the session lives on. When set, the action:
+//  1. Tries switch-client first (instant, no flicker — works on same socket)
+//  2. Falls back to detach + reattach via -L <socket> (cross-socket)
+//
+// When targetSocket is empty, uses plain switch-client (single-server).
+func buildMenuAction(targetSocket, session string) string {
+	if targetSocket == "" {
+		return fmt.Sprintf("switch-client -t '%s'", session)
+	}
+	// Try switch-client (same socket, instant). If it fails (cross-socket),
+	// detach and reattach to the target socket's session.
+	return fmt.Sprintf(
+		"run-shell 'tmux -L %s switch-client -t \"%s\" 2>/dev/null || tmux detach-client -E \"tmux -L %s attach -t %s\"'",
+		targetSocket, session, targetSocket, session,
+	)
 }
 
 // shortcutKey returns a keyboard shortcut for the menu item.
@@ -285,12 +443,15 @@ func shortcutKey(index int) string {
 }
 
 func runAgents(cmd *cobra.Command, args []string) error {
-	agents, err := getAgentSessions(agentsAllFlag)
-	if err != nil {
-		return fmt.Errorf("listing sessions: %w", err)
+	groups := getAllSocketSessions(agentsAllFlag)
+
+	// Count total sessions across all groups
+	total := 0
+	for _, g := range groups {
+		total += len(g.Sessions)
 	}
 
-	if len(agents) == 0 {
+	if total == 0 {
 		fmt.Println("No agent sessions running.")
 		fmt.Println("\nStart agents with:")
 		fmt.Println("  gt mayor start")
@@ -298,35 +459,68 @@ func runAgents(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Build display-menu arguments
-	menuArgs := []string{
-		"display-menu",
-		"-T", "#[fg=cyan,bold][CFG]  Gas Town Agents",
-		"-x", "C", // Center horizontally
-		"-y", "C", // Center vertically
+	// Group display titles: town socket -> "Gas Town", default -> "Personal",
+	// testing -> "Testing".
+	groupTitle := func(socket string) string {
+		switch {
+		case socket == tmux.GetDefaultSocket():
+			return "⚙️  Gas Town"
+		case socket == "default":
+			return "Personal"
+		case socket == "testing":
+			return "Testing"
+		default:
+			return socket
+		}
 	}
 
-	var currentRig string
+	// Build display-menu arguments.
+	// The first group's title goes in -T (the menu title bar, centered on
+	// the border line). Subsequent groups use a separator + non-selectable
+	// title item so each section gets its own centered header.
+	// "--" terminates flag parsing so "-" prefixed items aren't parsed as flags.
+	firstTitle := ""
+	if len(groups) > 0 {
+		firstTitle = groupTitle(groups[0].Socket)
+	}
+	menuArgs := []string{
+		"display-menu",
+		"-T", fmt.Sprintf("#[align=centre,fg=cyan,bold]%s", firstTitle), //nolint:misspell // tmux uses British spelling
+		"-x", "C",
+		"-y", "C",
+		"--",
+	}
+
 	keyIndex := 0
 
-	for _, agent := range agents {
-		// Add rig header when rig changes (skip for town-level agents)
-		if agent.Rig != "" && agent.Rig != currentRig {
-			if currentRig != "" || keyIndex > 0 {
-				// Add separator before new rig section
-				menuArgs = append(menuArgs, "")
-			}
-			// Add rig header (non-selectable)
-			menuArgs = append(menuArgs, fmt.Sprintf("#[fg=white,dim]── %s ──", agent.Rig), "", "")
-			currentRig = agent.Rig
+	for gi, group := range groups {
+		// Subsequent groups: separator line + centered title.
+		if gi > 0 {
+			menuArgs = append(menuArgs, "")
+			menuArgs = append(menuArgs,
+				fmt.Sprintf("-#[align=centre,fg=cyan,bold]%s", groupTitle(group.Socket)), //nolint:misspell // tmux uses British spelling
+				"", "")
 		}
 
-		key := shortcutKey(keyIndex)
-		label := agent.displayLabel()
-		action := fmt.Sprintf("switch-client -t '%s'", agent.Name)
+		// Rig sub-headers (non-selectable). Mayor/deacon are town-level
+		// and appear before any rig header.
+		var currentRig string
+		for _, agent := range group.Sessions {
+			if agent.Type != AgentPersonal && agent.Type != AgentTest &&
+				agent.Rig != "" && agent.Rig != currentRig &&
+				agent.Type != AgentMayor && agent.Type != AgentDeacon {
+				menuArgs = append(menuArgs,
+					fmt.Sprintf("-#[fg=white,dim]   %s", agent.Rig), "", "")
+				currentRig = agent.Rig
+			}
 
-		menuArgs = append(menuArgs, label, key, action)
-		keyIndex++
+			key := shortcutKey(keyIndex)
+			label := agent.displayLabel()
+			action := buildMenuAction(agent.Socket, agent.Name)
+
+			menuArgs = append(menuArgs, label, key, action)
+			keyIndex++
+		}
 	}
 
 	// Execute tmux display-menu
@@ -387,11 +581,11 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 
 // CollisionReport holds the results of a collision check.
 type CollisionReport struct {
-	TotalSessions int                    `json:"total_sessions"`
-	TotalLocks    int                    `json:"total_locks"`
-	Collisions    int                    `json:"collisions"`
-	StaleLocks    int                    `json:"stale_locks"`
-	Issues        []CollisionIssue       `json:"issues,omitempty"`
+	TotalSessions int                       `json:"total_sessions"`
+	TotalLocks    int                       `json:"total_locks"`
+	Collisions    int                       `json:"collisions"`
+	StaleLocks    int                       `json:"stale_locks"`
+	Issues        []CollisionIssue          `json:"issues,omitempty"`
 	Locks         map[string]*lock.LockInfo `json:"locks,omitempty"`
 }
 
@@ -423,12 +617,12 @@ func runAgentsCheck(cmd *cobra.Command, args []string) error {
 
 	// Text output
 	if len(report.Issues) == 0 {
-		fmt.Printf("%s All agents healthy\n", style.Bold.Render("OK"))
+		fmt.Printf("%s All agents healthy\n", style.Bold.Render("✓"))
 		fmt.Printf("  Sessions: %d, Locks: %d\n", report.TotalSessions, report.TotalLocks)
 		return nil
 	}
 
-	fmt.Printf("%s\n\n", style.Bold.Render("WARN: Issues Detected"))
+	fmt.Printf("%s\n\n", style.Bold.Render("⚠️  Issues Detected"))
 	fmt.Printf("Collisions: %d, Stale locks: %d\n\n", report.Collisions, report.StaleLocks)
 
 	for _, issue := range report.Issues {
@@ -458,7 +652,7 @@ func runAgentsFix(cmd *cobra.Command, args []string) error {
 	}
 
 	if cleaned > 0 {
-		fmt.Printf("%s Cleaned %d stale lock(s)\n", style.Bold.Render("OK"), cleaned)
+		fmt.Printf("%s Cleaned %d stale lock(s)\n", style.Bold.Render("✓"), cleaned)
 	} else {
 		fmt.Printf("%s No stale locks found\n", style.Dim.Render("○"))
 	}
@@ -472,7 +666,7 @@ func runAgentsFix(cmd *cobra.Command, args []string) error {
 	if report.Collisions > 0 {
 		fmt.Println()
 		fmt.Printf("%s %d collision(s) require manual intervention:\n\n",
-			style.Bold.Render("WARN"), report.Collisions)
+			style.Bold.Render("⚠"), report.Collisions)
 
 		for _, issue := range report.Issues {
 			if issue.Type == "collision" {
@@ -499,10 +693,10 @@ func buildCollisionReport(townRoot string) (*CollisionReport, error) {
 		sessions = []string{} // Continue even if tmux not running
 	}
 
-	// Filter to gt- sessions
+	// Filter to Gas Town sessions
 	var gtSessions []string
 	for _, s := range sessions {
-		if strings.HasPrefix(s, "gt-") {
+		if session.IsKnownSession(s) {
 			gtSessions = append(gtSessions, s)
 		}
 	}
@@ -573,10 +767,14 @@ func guessSessionFromWorkerDir(workerDir, townRoot string) string {
 	workerName := parts[2]
 
 	switch workerType {
-	case "crew":
-		return fmt.Sprintf("gt-%s-crew-%s", rig, workerName)
+	case constants.RoleCrew:
+		return session.CrewSessionName(session.PrefixFor(rig), workerName)
 	case "polecats":
-		return fmt.Sprintf("gt-%s-%s", rig, workerName)
+		return session.PolecatSessionName(session.PrefixFor(rig), workerName)
+	case constants.RoleWitness:
+		return session.WitnessSessionName(session.PrefixFor(rig))
+	case constants.RoleRefinery:
+		return session.RefinerySessionName(session.PrefixFor(rig))
 	}
 
 	return ""

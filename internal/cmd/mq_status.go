@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/style"
 )
 
 // MRStatusOutput is the JSON output structure for gt mq status.
@@ -233,7 +233,7 @@ func formatStatus(status string) string {
 	case "in_progress":
 		return style.Bold.Render("▶ in_progress")
 	case "closed":
-		return style.Dim.Render("OK closed")
+		return style.Dim.Render("✓ closed")
 	default:
 		return status
 	}
@@ -247,7 +247,7 @@ func getStatusIcon(status string) string {
 	case "in_progress":
 		return "▶"
 	case "closed":
-		return "OK"
+		return "✓"
 	default:
 		return "•"
 	}
@@ -276,7 +276,11 @@ func formatTimeAgo(timestamp string) string {
 		return "" // Can't parse, return empty
 	}
 
-	d := time.Since(t)
+	// Compare in UTC: Dolt stores timestamps in UTC, and time.Parse
+	// without timezone info returns UTC times. Using time.Since (which
+	// uses local time) caused false "in the future" for UTC timestamps
+	// that appear to be tomorrow when local time is still today (gt-ty4).
+	d := time.Now().UTC().Sub(t.UTC())
 	if d < 0 {
 		return style.Dim.Render("(in the future)")
 	}

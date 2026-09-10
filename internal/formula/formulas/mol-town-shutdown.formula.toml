@@ -1,7 +1,7 @@
 description = """
 Full Gas Town shutdown and restart.
 
-This is an idempotent shutdown - it stops Cursor sessions but preserves
+This is an idempotent shutdown - it stops Claude sessions but preserves
 polecat sandboxes and hooks. Polecats can resume their work after restart.
 
 Use when you need to:
@@ -47,13 +47,13 @@ If only warnings, decide whether to proceed (work will be preserved).
 
 [[steps]]
 id = "stop-sessions"
-title = "Stop Cursor sessions (preserve sandboxes)"
+title = "Stop Claude sessions (preserve sandboxes)"
 needs = ["preflight-check"]
 description = """
-Kill Cursor processes but leave polecat sandboxes intact.
+Kill Claude processes but leave polecat sandboxes intact.
 
 ```bash
-# Stop all polecat Cursor sessions
+# Stop all polecat Claude sessions
 gt stop --all --preserve-sandbox
 
 # Verify sandboxes still exist
@@ -61,7 +61,7 @@ gt polecats --all --status
 ```
 
 What this does:
-- Kills tmux sessions running Cursor
+- Kills tmux sessions running Claude
 - Leaves git clones untouched
 - Leaves hook files (pinned molecules) intact
 - Leaves uncommitted work in place
@@ -132,7 +132,7 @@ gt daemon rotate-logs
 gt doctor --fix
 ```
 
-Old logs are moved to `~/gt/logs/archive/` with timestamps.
+Old logs are moved to `$GT_ROOT/logs/archive/` with timestamps.
 """
 
 [[steps]]
@@ -196,3 +196,8 @@ The daemon will:
 Polecats are NOT auto-respawned. Use `gt sling` or let Witness
 restart them based on their preserved hooks.
 """
+
+[vars]
+[vars.shutdown_reason]
+description = "Reason for the shutdown (provided by caller)"
+default = ""

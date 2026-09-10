@@ -6,7 +6,8 @@
 // Protocol Message Types:
 //   - MERGE_READY: Witness → Refinery (branch ready for merge)
 //   - MERGED: Refinery → Witness (merge succeeded, cleanup ok)
-//   - MERGE_FAILED: Refinery → Witness (merge failed, needs rework)
+//   - MERGE_FAILED: Refinery → Witness (merge failed, needs rework) [LEGACY]
+//   - FIX_NEEDED: Refinery → Polecat (merge failed, fix and resubmit)
 //   - REWORK_REQUEST: Refinery → Witness (rebase needed)
 package protocol
 
@@ -31,13 +32,27 @@ const (
 
 	// TypeMergeFailed is sent from Refinery to Witness when a merge attempt
 	// failed (tests, build, or other non-conflict error).
+	// LEGACY: New code should use TypeFixNeeded (sent directly to polecat).
 	// Subject format: "MERGE_FAILED <polecat-name>"
 	TypeMergeFailed MessageType = "MERGE_FAILED"
+
+	// TypeFixNeeded is sent from Refinery directly to the Polecat when a
+	// merge attempt failed (tests, build, lint, etc.). The polecat reads
+	// failure details, fixes the code, and resubmits the MR.
+	// This replaces the old MERGE_FAILED → Witness → Polecat flow.
+	// Subject format: "FIX_NEEDED <polecat-name>"
+	TypeFixNeeded MessageType = "FIX_NEEDED"
 
 	// TypeReworkRequest is sent from Refinery to Witness when a polecat's
 	// branch needs rebasing due to conflicts with the target branch.
 	// Subject format: "REWORK_REQUEST <polecat-name>"
 	TypeReworkRequest MessageType = "REWORK_REQUEST"
+
+	// TypeConvoyNeedsFeeding is sent from Refinery to Deacon after a
+	// convoy-eligible merge completes. This triggers immediate convoy
+	// feeding instead of waiting for the next deacon patrol cycle.
+	// Subject format: "CONVOY_NEEDS_FEEDING <convoy-id>"
+	TypeConvoyNeedsFeeding MessageType = "CONVOY_NEEDS_FEEDING"
 )
 
 // ParseMessageType extracts the protocol message type from a mail subject.
@@ -50,11 +65,14 @@ func ParseMessageType(subject string) MessageType {
 		TypeMergeReady,
 		TypeMerged,
 		TypeMergeFailed,
+		TypeFixNeeded,
 		TypeReworkRequest,
+		TypeConvoyNeedsFeeding,
 	}
 
 	for _, prefix := range prefixes {
-		if strings.HasPrefix(subject, string(prefix)) {
+		p := string(prefix)
+		if subject == p || strings.HasPrefix(subject, p+" ") {
 			return prefix
 		}
 	}
@@ -137,6 +155,41 @@ type MergeFailedPayload struct {
 	TargetBranch string `json:"target_branch"`
 }
 
+// FixNeededPayload contains the data for a FIX_NEEDED message.
+// Sent by Refinery directly to the Polecat when merge fails due to tests,
+// build, lint, or other quality checks. The polecat fixes and resubmits.
+type FixNeededPayload struct {
+	// Branch is the source branch that failed to merge.
+	Branch string `json:"branch"`
+
+	// Issue is the beads issue ID.
+	Issue string `json:"issue"`
+
+	// Polecat is the worker name.
+	Polecat string `json:"polecat"`
+
+	// Rig is the rig name.
+	Rig string `json:"rig"`
+
+	// FailedAt is when the failure occurred.
+	FailedAt time.Time `json:"failed_at"`
+
+	// FailureType categorizes the failure (tests, build, lint, typecheck, etc.).
+	FailureType string `json:"failure_type"`
+
+	// Error is the error message/output from the failed check.
+	Error string `json:"error"`
+
+	// TargetBranch is the branch we tried to merge into.
+	TargetBranch string `json:"target_branch"`
+
+	// MRBeadID is the merge-request bead ID (preserved for resubmission).
+	MRBeadID string `json:"mr_bead_id,omitempty"`
+
+	// AttemptNumber tracks how many fix attempts have been made.
+	AttemptNumber int `json:"attempt_number"`
+}
+
 // ReworkRequestPayload contains the data for a REWORK_REQUEST message.
 // Sent by Refinery when a polecat's branch has conflicts requiring rebase.
 type ReworkRequestPayload struct {
@@ -163,6 +216,60 @@ type ReworkRequestPayload struct {
 
 	// Instructions provides specific rebase instructions.
 	Instructions string `json:"instructions,omitempty"`
+}
+
+// PolecatDonePayload contains the data from a POLECAT_DONE notification.
+// This is not a formal protocol message (it's a mail convention), but the
+// payload is structured for programmatic parsing by witness handlers.
+type PolecatDonePayload struct {
+	// Polecat is the worker name.
+	Polecat string `json:"polecat"`
+
+	// ExitType is the exit status (COMPLETED, ESCALATED, DEFERRED, PHASE_COMPLETE).
+	ExitType string `json:"exit_type"`
+
+	// Issue is the beads issue ID the polecat worked on.
+	Issue string `json:"issue,omitempty"`
+
+	// Branch is the polecat's work branch.
+	Branch string `json:"branch"`
+
+	// MR is the merge-request bead ID (empty for owned+direct convoys).
+	MR string `json:"mr,omitempty"`
+
+	// ConvoyID is the tracking convoy ID (if any).
+	ConvoyID string `json:"convoy_id,omitempty"`
+
+	// ConvoyOwned indicates the convoy has caller-managed lifecycle.
+	ConvoyOwned bool `json:"convoy_owned,omitempty"`
+
+	// MergeStrategy is the convoy's merge strategy (direct, mr, local).
+	MergeStrategy string `json:"merge_strategy,omitempty"`
+
+	// Errors contains any non-fatal errors encountered during gt done.
+	Errors string `json:"errors,omitempty"`
+}
+
+// SkipMergeFlow returns true if this polecat's work should bypass the
+// standard witness/refinery merge pipeline (owned convoy + direct merge).
+func (p *PolecatDonePayload) SkipMergeFlow() bool {
+	return p.ConvoyOwned && p.MergeStrategy == "direct"
+}
+
+// ConvoyNeedsFeedingPayload contains the data for a CONVOY_NEEDS_FEEDING message.
+// Sent by Refinery to Deacon after a convoy-eligible merge completes.
+type ConvoyNeedsFeedingPayload struct {
+	// ConvoyID is the convoy that may have newly-ready issues.
+	ConvoyID string `json:"convoy_id"`
+
+	// SourceIssue is the issue that was just merged and closed.
+	SourceIssue string `json:"source_issue"`
+
+	// Rig is the rig where the merge happened.
+	Rig string `json:"rig"`
+
+	// MergedAt is when the merge completed.
+	MergedAt time.Time `json:"merged_at"`
 }
 
 // IsProtocolMessage returns true if the subject matches a known protocol type.

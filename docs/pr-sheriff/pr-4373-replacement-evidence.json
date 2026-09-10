@@ -1,0 +1,231 @@
+{
+  "schema_version": "pr-sheriff-evidence/v1",
+  "policy_version": "pr-sheriff-policy/v1.1",
+  "generated_at": "2026-07-06T14:55:00Z",
+  "run_id": "gt-6kal-pr-4378-refresh",
+  "subject": {
+    "forge": "github",
+    "repo_id": "gastownhall/gastown",
+    "default_branch": "main",
+    "change_type": "pull_request",
+    "change_id": "4378",
+    "url": "https://github.com/gastownhall/gastown/pull/4378",
+    "title": "fix: converge active work lookup",
+    "author": "Thalia-geraghty",
+    "author_tier": "trusted",
+    "draft": false,
+    "base_ref": "main",
+    "base_sha": "b1022a628aec9e06090569e0234a138cabc4150a",
+    "head_ref": "polecat/thunder/gt-pr-4373-clean-replacement-fix@4b3517",
+    "head_sha": "73cc9eaa4994136da6ce41b488c93986d0c816c0",
+    "diff_summary": {
+      "additions": 710,
+      "deletions": 194,
+      "changed_files": 15,
+      "paths": [
+        "docs/pr-sheriff/pr-4373-replacement-evidence.json",
+        "internal/beads/beads.go",
+        "internal/beads/beads_test.go",
+        "internal/beads/routes.go",
+        "internal/beads/store.go",
+        "internal/cmd/handoff.go",
+        "internal/cmd/handoff_test.go",
+        "internal/cmd/hook.go",
+        "internal/cmd/hook_test.go",
+        "internal/cmd/hooked_work.go",
+        "internal/cmd/hooked_work_test.go",
+        "internal/cmd/molecule_status.go",
+        "internal/cmd/patrol_helpers.go",
+        "internal/cmd/prime.go",
+        "internal/cmd/prime_session.go"
+      ]
+    }
+  },
+  "repo_policy": {
+    "label_aliases": [
+      {"from": "status/reviewing", "to_family": "status", "to_value": "reviewing"},
+      {"from": "status/review-approved", "to_family": "status", "to_value": "review-approved"},
+      {"from": "status/review-failed", "to_family": "status", "to_value": "review-failed"},
+      {"from": "status/merge-ready", "to_family": "status", "to_value": "merge-ready"},
+      {"from": "priority/p1", "to_family": "priority", "to_value": "p1"},
+      {"from": "kind/bug", "to_family": "kind", "to_value": "bug"}
+    ],
+    "feature_kind_values": ["feature", "enhancement"],
+    "merge_ready_status_values": ["review-approved", "merge-ready"],
+    "approver_roles": ["maintainer", "owner"],
+    "evidence_locations": ["beads_note", "local_report", "github_pr", "ci_log"],
+    "baseline_checks": ["Test", "Lint", "Integration Tests", "Windows Smoke Test"],
+    "no_verification_reasons": []
+  },
+  "action_plan": {
+    "id": "action-plan-gt-6kal-pr-4378-refresh",
+    "mode": "replacement_pr",
+    "proposed_action_ref": "action-plan-gt-6kal-pr-4378-refresh",
+    "summary": "Refresh existing PR #4378 on current upstream main, preserve the accepted #4347/#4373 active-work lookup intent and Thalia attribution, remove the raw SQL durable issue-listing path, preserve current-main ListIssueStatuses, harden target-derived hook workdir resolution, and rerun local checks plus GitHub CI without refinery or merge queue.",
+    "created_at": "2026-07-06T13:58:00Z"
+  },
+  "labels": {
+    "observed": [
+      {"name": "status/review-approved", "family": "status", "semantic_value": "review-approved", "subject": "PR #4378"},
+      {"name": "priority/p1", "family": "priority", "semantic_value": "p1", "subject": "PR #4378"},
+      {"name": "kind/bug", "family": "kind", "semantic_value": "bug", "subject": "PR #4378"}
+    ],
+    "status": "review-approved",
+    "priority": "p1",
+    "kind": "bug",
+    "snapshot_artifact_ref": "artifact-pr-metadata-final"
+  },
+  "artifacts": [
+    {"id": "artifact-pr-metadata-initial", "kind": "github_pr_metadata", "uri": "https://github.com/gastownhall/gastown/pull/4378", "actor": "gh-pr-view", "created_at": "2026-07-06T13:50:00Z", "digest": "dcff817e37c3397190af9262c7e70ea625381cc0", "summary": "Initial PR #4378 state was dirty/conflicting, status/review-failed, base d7868cc, head dcff817e."},
+    {"id": "artifact-pr-metadata-final", "kind": "github_pr_metadata", "uri": "https://github.com/gastownhall/gastown/pull/4378", "actor": "gh-pr-view", "created_at": "2026-07-06T14:54:00Z", "digest": "73cc9eaa4994136da6ce41b488c93986d0c816c0", "summary": "Refreshed PR #4378 is open, non-draft, clean/mergeable, based on upstream main b1022a628, head 73cc9eaa, authored on GitHub by Bella-Giraffety, and labeled kind/bug priority/p1 status/review-approved."},
+    {"id": "artifact-current-code", "kind": "code_read", "uri": "file:internal/beads,file:internal/cmd", "actor": "gastown/polecats/fury", "created_at": "2026-07-06T13:57:00Z", "digest": null, "summary": "Current code and PR diff inspected for ListIssueStatuses conflict, raw ListIssues SQL, active-work lookup duplication, target-derived workdir validation, and tests."},
+    {"id": "artifact-research-fanout", "kind": "agent_fanout", "uri": "beads:gt-6kal#notes", "actor": "opencode-task-subagents", "created_at": "2026-07-06T14:06:00Z", "digest": null, "summary": "15 independent read-only research legs completed: metadata, conflicts, SQL risk, API convergence, target validation, tests, command integration, callsite regressions, store impact, attribution, CI gates, security, cleanup-first, checker needs, and replacement flow."},
+    {"id": "artifact-pre-reviews", "kind": "agent_fanout", "uri": "beads:gt-6kal#notes", "actor": "opencode-task-subagents", "created_at": "2026-07-06T14:14:00Z", "digest": null, "summary": "5 pre-implementation reviews approved the cleanup-first plan with no blocking findings."},
+    {"id": "artifact-implementation-head", "kind": "git_commit", "uri": "urn:git:commit:73cc9eaa4994136da6ce41b488c93986d0c816c0", "actor": "git", "created_at": "2026-07-06T14:36:00Z", "digest": "73cc9eaa4994136da6ce41b488c93986d0c816c0", "summary": "WIP-free implementation head after rebasing PR #4378 on upstream main and wiring active-work lookup call sites."},
+    {"id": "artifact-final-diff", "kind": "git_diff", "uri": "urn:git:diff:upstream/main...73cc9eaa4994136da6ce41b488c93986d0c816c0", "actor": "git-diff", "created_at": "2026-07-06T14:37:00Z", "digest": null, "summary": "Final implementation diff: preserve ListIssueStatuses, remove raw ListIssues SQL path, set store SkipWisps, add shared active-work helper and tests, harden target path resolution, and update hook/molecule/prime/patrol call sites."},
+    {"id": "artifact-post-reviews", "kind": "agent_fanout", "uri": "beads:gt-6kal#notes", "actor": "opencode-task-subagents", "created_at": "2026-07-06T14:42:00Z", "digest": "73cc9eaa4994136da6ce41b488c93986d0c816c0", "summary": "5 post-implementation reviews approved cleanup, correctness, security, verification, and policy/attribution for implementation head 73cc9eaa."},
+    {"id": "artifact-local-tests", "kind": "verification_log", "uri": "urn:local-command:CGO_ENABLED=0-go-test-and-build", "actor": "go-test", "created_at": "2026-07-06T14:40:00Z", "digest": null, "summary": "CGO_ENABLED=0 go test ./internal/beads ./internal/cmd -count=1 passed; CGO_ENABLED=0 go build ./cmd/gt passed."},
+    {"id": "artifact-ci-final", "kind": "ci_log", "uri": "https://github.com/gastownhall/gastown/pull/4378/checks", "actor": "gh-pr-checks", "created_at": "2026-07-06T14:53:00Z", "digest": "73cc9eaa4994136da6ce41b488c93986d0c816c0", "summary": "Fresh PR #4378 checks on head 73cc9eaa passed: Test, Lint, Integration Tests, Windows Smoke Test, Reject go.mod replace directives, Reject issues.jsonl, and remove-label."},
+    {"id": "artifact-attribution", "kind": "git_commit", "uri": "urn:git:commit:58d6413a9a5d1007921e01ccda647410f7bed48c", "actor": "git-log", "created_at": "2026-07-06T14:37:00Z", "digest": "58d6413a9a5d1007921e01ccda647410f7bed48c", "summary": "Replacement commit preserves Thalia-geraghty attribution with Refs to PR #4347/#4373 and Co-authored-by: Thalia-geraghty <thalia.geraghty@fiserv.com>."}
+  ],
+  "implementation": {
+    "code_changed_by_sheriff": true,
+    "mode": "replacement_pr",
+    "first_code_change_at": "2026-07-06T14:15:00Z",
+    "modified_paths": [
+      "internal/beads/beads.go",
+      "internal/beads/beads_test.go",
+      "internal/beads/routes.go",
+      "internal/beads/store.go",
+      "internal/cmd/handoff.go",
+      "internal/cmd/handoff_test.go",
+      "internal/cmd/hook.go",
+      "internal/cmd/hook_test.go",
+      "internal/cmd/hooked_work.go",
+      "internal/cmd/hooked_work_test.go",
+      "internal/cmd/molecule_status.go",
+      "internal/cmd/patrol_helpers.go",
+      "internal/cmd/prime.go",
+      "internal/cmd/prime_session.go"
+    ],
+    "commits": [
+      "58d6413a9a5d1007921e01ccda647410f7bed48c",
+      "684dcb219c26c3af76b35e71cb1b0d20e8e43da8",
+      "73cc9eaa4994136da6ce41b488c93986d0c816c0"
+    ]
+  },
+  "evidence": {
+    "research_legs": [
+      {"id": "research-01", "independence_key": "R01-pr-metadata", "artifact_ref": "artifact-pr-metadata-initial", "completed_at": "2026-07-06T13:53:00Z", "actor": "subagent", "lens": "PR metadata blockers", "summary": "PR #4378 started dirty/conflicting, stale CI, status/review-failed, and diverged from current upstream main."},
+      {"id": "research-02", "independence_key": "R02-beads-conflicts", "artifact_ref": "artifact-current-code", "completed_at": "2026-07-06T13:54:00Z", "actor": "subagent", "lens": "rebase conflicts", "summary": "Conflicts centered on internal/beads/beads.go and beads_test.go; resolution must preserve current-main ListIssueStatuses and avoid parallel APIs."},
+      {"id": "research-03", "independence_key": "R03-listissues-sql", "artifact_ref": "artifact-current-code", "completed_at": "2026-07-06T13:55:00Z", "actor": "subagent", "lens": "SQL risk", "summary": "PR-added raw ListIssues SQL path created escaping risk and should be removed or centralized; final implementation removes it."},
+      {"id": "research-04", "independence_key": "R04-status-api-convergence", "artifact_ref": "artifact-current-code", "completed_at": "2026-07-06T13:56:00Z", "actor": "subagent", "lens": "API convergence", "summary": "Durable status listing should converge with current-main ListIssueStatuses and avoid keeping independent status-filter semantics."},
+      {"id": "research-05", "independence_key": "R05-workdir-validation", "artifact_ref": "artifact-current-code", "completed_at": "2026-07-06T13:57:00Z", "actor": "subagent", "lens": "target-derived workdir", "summary": "Target first segments could become paths; final implementation adds safe segment checks and route containment."},
+      {"id": "research-06", "independence_key": "R06-active-work-tests", "artifact_ref": "artifact-current-code", "completed_at": "2026-07-06T13:58:00Z", "actor": "subagent", "lens": "test gaps", "summary": "Focused tests needed for active statuses, merge/dedupe/sort, route resolution, and target rejection."},
+      {"id": "research-07", "independence_key": "R07-hook-integration", "artifact_ref": "artifact-current-code", "completed_at": "2026-07-06T13:59:00Z", "actor": "subagent", "lens": "hook integration", "summary": "Callers should use one active-work helper instead of repeated hooked then in_progress queries."},
+      {"id": "research-08", "independence_key": "R08-cmd-regressions", "artifact_ref": "artifact-current-code", "completed_at": "2026-07-06T14:00:00Z", "actor": "subagent", "lens": "command regressions", "summary": "Reviewed hook, molecule, prime/session, and patrol behavior for source DB, ordering, and fallback risks."},
+      {"id": "research-09", "independence_key": "R09-store-interface", "artifact_ref": "artifact-current-code", "completed_at": "2026-07-06T14:01:00Z", "actor": "subagent", "lens": "store API", "summary": "No new SDK method needed; existing store SearchIssues can skip wisps for durable listing."},
+      {"id": "research-10", "independence_key": "R10-attribution", "artifact_ref": "artifact-attribution", "completed_at": "2026-07-06T14:02:00Z", "actor": "subagent", "lens": "attribution", "summary": "Original work came from Thalia-geraghty in PR #4347/#4373; replacement must preserve refs and co-author credit."},
+      {"id": "research-11", "independence_key": "R11-ci-gates", "artifact_ref": "artifact-local-tests", "completed_at": "2026-07-06T14:03:00Z", "actor": "subagent", "lens": "verification", "summary": "Local focused checks are internal/beads, internal/cmd, and cmd/gt build; exact lint/integration/windows evidence must come from GitHub CI."},
+      {"id": "research-12", "independence_key": "R12-security", "artifact_ref": "artifact-current-code", "completed_at": "2026-07-06T14:04:00Z", "actor": "subagent", "lens": "security", "summary": "Security review focused on raw SQL, path traversal, secrets, workflows, and CI credentials; final code addresses SQL/path risks."},
+      {"id": "research-13", "independence_key": "R13-cleanup-first", "artifact_ref": "artifact-current-code", "completed_at": "2026-07-06T14:05:00Z", "actor": "subagent", "lens": "cleanup-first", "summary": "Accepted shape is convergent active-work lookup plus removal of raw SQL workaround, not additive bandaids."},
+      {"id": "research-14", "independence_key": "R14-evidence-checker", "artifact_ref": "artifact-research-fanout", "completed_at": "2026-07-06T14:06:00Z", "actor": "subagent", "lens": "checker schema", "summary": "Evidence must include fresh 15+5+5, final head, CI, labels, replacement flow, blocker scan, and checker output."},
+      {"id": "research-15", "independence_key": "R15-replacement-flow", "artifact_ref": "artifact-pr-metadata-final", "completed_at": "2026-07-06T14:07:00Z", "actor": "subagent", "lens": "replacement flow", "summary": "Same-PR branch update is permitted; no refinery/MQ; use force-with-lease and leave #4347/#4373 open until replacement merge evidence exists."}
+    ],
+    "pre_implementation_reviews": [
+      {"id": "pre-01", "independence_key": "P01-cleanup-review", "artifact_ref": "artifact-pre-reviews", "reviewed_action_ref": "action-plan-gt-6kal-pr-4378-refresh", "completed_at": "2026-07-06T14:10:00Z", "actor": "subagent", "verdict": "approve", "summary": "Approved cleanup-first plan to rebuild on upstream main, preserve ListIssueStatuses, remove raw SQL ListIssues, and harden target paths."},
+      {"id": "pre-02", "independence_key": "P02-correctness-review", "artifact_ref": "artifact-pre-reviews", "reviewed_action_ref": "action-plan-gt-6kal-pr-4378-refresh", "completed_at": "2026-07-06T14:11:00Z", "actor": "subagent", "verdict": "approve", "summary": "Approved hooked-before-in_progress ordering, durable/wisp merge/dedupe/sort, store SkipWisps, and route fallback plan."},
+      {"id": "pre-03", "independence_key": "P03-security-review", "artifact_ref": "artifact-pre-reviews", "reviewed_action_ref": "action-plan-gt-6kal-pr-4378-refresh", "completed_at": "2026-07-06T14:12:00Z", "actor": "subagent", "verdict": "approve", "summary": "Approved deleting raw SQL path and adding target path validation plus containment tests."},
+      {"id": "pre-04", "independence_key": "P04-scope-attribution-review", "artifact_ref": "artifact-pre-reviews", "reviewed_action_ref": "action-plan-gt-6kal-pr-4378-refresh", "completed_at": "2026-07-06T14:13:00Z", "actor": "subagent", "verdict": "approve", "summary": "Approved same-PR repair, no MQ/refinery, and Thalia attribution preservation."},
+      {"id": "pre-05", "independence_key": "P05-verification-review", "artifact_ref": "artifact-pre-reviews", "reviewed_action_ref": "action-plan-gt-6kal-pr-4378-refresh", "completed_at": "2026-07-06T14:14:00Z", "actor": "subagent", "verdict": "approve", "summary": "Approved local tests before push plus GitHub CI/checker evidence before merge-gate claim."}
+    ],
+    "post_implementation_reviews": [
+      {"id": "post-01", "independence_key": "POST01-cleanup-convergence-v2", "artifact_ref": "artifact-post-reviews", "reviewed_action_ref": "action-plan-gt-6kal-pr-4378-refresh", "reviewed_head_sha": "73cc9eaa4994136da6ce41b488c93986d0c816c0", "completed_at": "2026-07-06T14:42:00Z", "actor": "subagent", "verdict": "approve", "summary": "Approved convergence: active-work helper is wired through hook, molecule status, prime/session, and patrol with no bandaid layer."},
+      {"id": "post-02", "independence_key": "POST02-correctness-v2", "artifact_ref": "artifact-post-reviews", "reviewed_action_ref": "action-plan-gt-6kal-pr-4378-refresh", "reviewed_head_sha": "73cc9eaa4994136da6ce41b488c93986d0c816c0", "completed_at": "2026-07-06T14:42:00Z", "actor": "subagent", "verdict": "approve", "summary": "Approved status ordering, durable/wisp merge, ListIssueStatuses preservation, store SkipWisps, and WIP-free history."},
+      {"id": "post-03", "independence_key": "POST03-security-v2", "artifact_ref": "artifact-post-reviews", "reviewed_action_ref": "action-plan-gt-6kal-pr-4378-refresh", "reviewed_head_sha": "73cc9eaa4994136da6ce41b488c93986d0c816c0", "completed_at": "2026-07-06T14:43:00Z", "actor": "subagent", "verdict": "approve", "summary": "Approved security: raw SQL risk removed, argv execution remains, target traversal guarded, route containment enforced, and no workflow/secret changes."},
+      {"id": "post-04", "independence_key": "POST04-verification-v2", "artifact_ref": "artifact-local-tests", "reviewed_action_ref": "action-plan-gt-6kal-pr-4378-refresh", "reviewed_head_sha": "73cc9eaa4994136da6ce41b488c93986d0c816c0", "completed_at": "2026-07-06T14:43:00Z", "actor": "subagent", "verdict": "approve", "summary": "Approved local verification: CGO_ENABLED=0 go test ./internal/beads ./internal/cmd -count=1 and CGO_ENABLED=0 go build ./cmd/gt passed."},
+      {"id": "post-05", "independence_key": "POST05-policy-attribution-v2", "artifact_ref": "artifact-attribution", "reviewed_action_ref": "action-plan-gt-6kal-pr-4378-refresh", "reviewed_head_sha": "73cc9eaa4994136da6ce41b488c93986d0c816c0", "completed_at": "2026-07-06T14:44:00Z", "actor": "subagent", "verdict": "approve", "summary": "Approved policy and attribution: no WIP commits, no MQ/refinery path, #4347/#4373 refs and Thalia co-author trailer preserved."}
+    ]
+  },
+  "cleanup_first": {
+    "assessment": "convergent",
+    "rationale": "The final implementation collapses repeated active-work lookup blocks into a shared helper, removes the raw SQL durable listing surface instead of hardening it as a workaround, and keeps current-main ListIssueStatuses as the existing optimized status API.",
+    "prohibited_patterns": [
+      {"kind": "bandaid", "present": false, "exception_reason": "none", "evidence_ref": null},
+      {"kind": "workaround_layer", "present": false, "exception_reason": "none", "evidence_ref": null},
+      {"kind": "compatibility_shim", "present": false, "exception_reason": "none", "evidence_ref": null},
+      {"kind": "patch_on_patch", "present": false, "exception_reason": "none", "evidence_ref": null},
+      {"kind": "scope_creep", "present": false, "exception_reason": "none", "evidence_ref": null}
+    ]
+  },
+  "enhancement_approval": {
+    "required": false,
+    "required_reason": null,
+    "approved": false,
+    "approver": null,
+    "approver_role": null,
+    "approval_ref": null,
+    "approved_at": null
+  },
+  "verification": {
+    "focused_checks": [
+      {"name": "internal/beads", "command_or_check": "CGO_ENABLED=0 go test ./internal/beads -count=1", "outcome": "pass", "reason": "Focused package test for beads listing/status/store changes.", "artifact_ref": "artifact-local-tests", "completed_at": "2026-07-06T14:39:00Z"},
+      {"name": "internal/cmd focused", "command_or_check": "CGO_ENABLED=0 go test ./internal/cmd -run 'Test(ResolveHookLookupWorkDir|ActiveWork|NormalizeHookShowTarget|ResolvePathToSessionRejectsUnsafeSegments|RunHookShow|OutputMoleculeStatus|FindActivePatrol|BurnPreviousPatrol)' -count=1", "outcome": "pass", "reason": "Focused command tests for active-work lookup and target hardening.", "artifact_ref": "artifact-local-tests", "completed_at": "2026-07-06T14:39:00Z"},
+      {"name": "internal/beads+internal/cmd", "command_or_check": "CGO_ENABLED=0 go test ./internal/beads ./internal/cmd -count=1", "outcome": "pass", "reason": "Broader local package gate for touched packages.", "artifact_ref": "artifact-local-tests", "completed_at": "2026-07-06T14:40:00Z"},
+      {"name": "cmd/gt build", "command_or_check": "CGO_ENABLED=0 go build ./cmd/gt", "outcome": "pass", "reason": "Build gate for the gt binary.", "artifact_ref": "artifact-local-tests", "completed_at": "2026-07-06T14:40:00Z"}
+    ],
+    "ci_checks": [
+      {"name": "Reject go.mod replace directives", "outcome": "pass", "run_url": "https://github.com/gastownhall/gastown/actions/runs/28799964108/job/85400366394", "artifact_ref": "artifact-ci-final"},
+      {"name": "Reject issues.jsonl", "outcome": "pass", "run_url": "https://github.com/gastownhall/gastown/actions/runs/28799964108/job/85400366443", "artifact_ref": "artifact-ci-final"},
+      {"name": "Test", "outcome": "pass", "run_url": "https://github.com/gastownhall/gastown/actions/runs/28799964108/job/85400366441", "artifact_ref": "artifact-ci-final"},
+      {"name": "Lint", "outcome": "pass", "run_url": "https://github.com/gastownhall/gastown/actions/runs/28799964108/job/85400366430", "artifact_ref": "artifact-ci-final"},
+      {"name": "Integration Tests", "outcome": "pass", "run_url": "https://github.com/gastownhall/gastown/actions/runs/28799964108/job/85400366423", "artifact_ref": "artifact-ci-final"},
+      {"name": "Windows Smoke Test", "outcome": "pass", "run_url": "https://github.com/gastownhall/gastown/actions/runs/28799963419/job/85400363993", "artifact_ref": "artifact-ci-final"}
+    ]
+  },
+  "baseline_red_waiver": {
+    "requested": false,
+    "approved": false,
+    "approved_by": null,
+    "approver_role": null,
+    "approved_at": null,
+    "approval_ref": null,
+    "failing_checks": [],
+    "unrelated_rationale": "",
+    "evidence_refs": []
+  },
+  "replacement_flow": {
+    "required": true,
+    "mode": "replacement_pr",
+    "state": "ready",
+    "original_change_url": "https://github.com/gastownhall/gastown/pull/4373",
+    "replacement_change_url": "https://github.com/gastownhall/gastown/pull/4378",
+    "replacement_branch": "polecat/thunder/gt-pr-4373-clean-replacement-fix@4b3517",
+    "replacement_commit_refs": ["73cc9eaa4994136da6ce41b488c93986d0c816c0"],
+    "original_author": "Thalia-geraghty",
+    "evidence_reuse": {"reused_artifact_refs": ["artifact-pr-metadata-initial", "artifact-attribution"], "fresh_artifact_refs": ["artifact-pr-metadata-final", "artifact-final-diff", "artifact-local-tests", "artifact-ci-final", "artifact-post-reviews"], "rationale": "Reuse original PR intent and attribution only; implementation and verification were refreshed on current upstream main."},
+    "attribution": {"required": true, "required_reason": "Replacement carries forward accepted contributor work from #4347/#4373.", "preserved": true, "method": "co_authored_by", "artifact_refs": ["artifact-attribution", "artifact-implementation-head"]},
+    "superseded_closure": {"required": true, "state": "deferred_until_replacement_merge", "closure_intent_ref": "artifact-pr-metadata-final", "replacement_merge_ref": null, "closure_ref": null}
+  },
+  "blocker_scan": {
+    "scanned_sources": ["labels", "pr_comments", "review_comments", "beads_notes", "ci_checks", "git_diff"],
+    "unresolved_blockers_found": false,
+    "blocker_refs": [],
+    "resolution_refs": ["artifact-pr-metadata-final", "artifact-local-tests", "artifact-ci-final", "artifact-post-reviews"],
+    "scanned_at": "2026-07-06T14:55:00Z",
+    "summary": "Initial conflict and stale status blockers were resolved by rebuilding PR #4378 on current upstream main, replacing status/review-failed with status/review-approved after post-review and CI, and confirming clean mergeability. Codecov comment is informational and reports all tests successful; configured baseline checks are green. Original #4347/#4373 closure remains deferred until replacement merge evidence exists."
+  },
+  "gates": [],
+  "final": {
+    "verdict": "merge_replacement",
+    "decision_valid": true,
+    "merge_path_allowed": true,
+    "blocking_gates": [],
+    "target_change_url": "https://github.com/gastownhall/gastown/pull/4378",
+    "target_head_sha": "73cc9eaa4994136da6ce41b488c93986d0c816c0",
+    "decided_by": "gastown/polecats/fury",
+    "decided_at": "2026-07-06T14:55:00Z",
+    "reason": "PR #4378 has been refreshed on current upstream main, is clean/mergeable, carries the approved cleanup-first active-work lookup convergence fix, preserves #4347/#4373 attribution, has 15+5+5 PR Sheriff evidence, and has green local verification plus green GitHub CI on head 73cc9eaa.",
+    "required_actions": ["Merge replacement PR #4378", "After replacement merge evidence exists, close #4347/#4373 as superseded if appropriate"]
+  }
+}

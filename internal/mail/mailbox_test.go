@@ -5,13 +5,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/harness-institute/cursor-gastown/internal/beads"
 )
 
 func TestNewMailbox(t *testing.T) {
 	m := NewMailbox("/tmp/test")
-	if m.path != "/tmp/test/inbox.jsonl" {
+	if filepath.ToSlash(m.path) != "/tmp/test/inbox.jsonl" {
 		t.Errorf("NewMailbox path = %q, want %q", m.path, "/tmp/test/inbox.jsonl")
 	}
 	if !m.legacy {
@@ -264,6 +269,56 @@ func TestMailboxLegacyListUnread(t *testing.T) {
 	}
 }
 
+func TestMailboxMarkReadOnlyExcludesFromUnread(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := NewMailbox(tmpDir)
+
+	msgs := []*Message{
+		{ID: "msg-001", Read: false, Subject: "First"},
+		{ID: "msg-002", Read: false, Subject: "Second"},
+	}
+	for _, msg := range msgs {
+		if err := m.Append(msg); err != nil {
+			t.Fatalf("Append error: %v", err)
+		}
+	}
+
+	// Both should be unread initially
+	unread, err := m.ListUnread()
+	if err != nil {
+		t.Fatalf("ListUnread error: %v", err)
+	}
+	if len(unread) != 2 {
+		t.Errorf("ListUnread returned %d, want 2", len(unread))
+	}
+
+	// Mark one as read-only (simulates gt mail read behavior)
+	if err := m.MarkReadOnly("msg-001"); err != nil {
+		t.Fatalf("MarkReadOnly error: %v", err)
+	}
+
+	// Should only have 1 unread now
+	unread, err = m.ListUnread()
+	if err != nil {
+		t.Fatalf("ListUnread error: %v", err)
+	}
+	if len(unread) != 1 {
+		t.Errorf("ListUnread returned %d after MarkReadOnly, want 1", len(unread))
+	}
+	if len(unread) == 1 && unread[0].ID != "msg-002" {
+		t.Errorf("Expected msg-002 to be unread, got %s", unread[0].ID)
+	}
+
+	// The marked message should still be in full list
+	all, err := m.List()
+	if err != nil {
+		t.Fatalf("List error: %v", err)
+	}
+	if len(all) != 2 {
+		t.Errorf("List returned %d, want 2 (MarkReadOnly should not remove)", len(all))
+	}
+}
+
 func TestMailboxLegacyListByThread(t *testing.T) {
 	tmpDir := t.TempDir()
 	m := NewMailbox(tmpDir)
@@ -332,7 +387,7 @@ func TestMailboxIdentityAndPath(t *testing.T) {
 	if legacy.Identity() != "" {
 		t.Errorf("Legacy mailbox identity = %q, want empty", legacy.Identity())
 	}
-	if legacy.Path() != "/tmp/test/inbox.jsonl" {
+	if filepath.ToSlash(legacy.Path()) != "/tmp/test/inbox.jsonl" {
 		t.Errorf("Legacy mailbox path = %q, want /tmp/test/inbox.jsonl", legacy.Path())
 	}
 
@@ -379,8 +434,208 @@ func TestNewMailboxWithBeadsDir(t *testing.T) {
 	if m.identity != "gastown/Toast" {
 		t.Errorf("identity = %q, want 'gastown/Toast'", m.identity)
 	}
-	if m.beadsDir != "/custom/.beads" {
+	if filepath.ToSlash(m.beadsDir) != "/custom/.beads" {
 		t.Errorf("beadsDir = %q, want '/custom/.beads'", m.beadsDir)
+	}
+}
+
+func TestMailboxListFromDirConvergesWispQueryAndFiltersStatuses(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fake bd is POSIX-only")
+	}
+
+	beadsDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(beadsDir, ".gt-types-configured"), []byte(beads.TypeConfigSentinelValue()+"\n"), 0644); err != nil {
+		t.Fatalf("write types sentinel: %v", err)
+	}
+
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "bd.log")
+	fakeBD := filepath.Join(binDir, "bd")
+	script := `#!/bin/sh
+printf '%s\n' "$*" >> "$BD_LOG"
+if [ "$1" = "list" ]; then
+  case "$*" in
+    *"--assignee gastown/synth"*)
+      printf '%s\n' '[{"id":"issue-direct-open","title":"Direct open","description":"","status":"open","priority":2,"assignee":"gastown/synth","created_at":"2026-06-12T12:00:05Z","labels":["gt:message","from:mayor/"]},{"id":"issue-direct-hooked","title":"Direct hooked","description":"","status":"hooked","priority":2,"assignee":"gastown/synth","created_at":"2026-06-12T12:00:04Z","labels":["gt:message","from:mayor/"]},{"id":"issue-direct-closed","title":"Direct closed","description":"","status":"closed","priority":2,"assignee":"gastown/synth","created_at":"2026-06-12T12:00:03Z","labels":["gt:message","from:mayor/"]}]'
+      exit 0
+      ;;
+    *"--label cc:gastown/synth"*)
+      printf '%s\n' '[{"id":"issue-cc-open","title":"CC open","description":"","status":"open","priority":2,"assignee":"mayor/","created_at":"2026-06-12T12:00:02Z","labels":["gt:message","cc:gastown/synth","from:mayor/"]},{"id":"issue-cc-hooked","title":"CC hooked","description":"","status":"hooked","priority":2,"assignee":"mayor/","created_at":"2026-06-12T12:00:01Z","labels":["gt:message","cc:gastown/synth","from:mayor/"]}]'
+      exit 0
+      ;;
+  esac
+  printf '%s\n' 'No issues found.'
+  exit 0
+fi
+if [ "$1" = "sql" ]; then
+  printf '%s\n' '[{"id":"wisp-direct-open","title":"Wisp direct open","description":"","status":"open","priority":2,"assignee":"gastown/synth","created_at":"2026-06-12T12:00:00Z","updated_at":"2026-06-12T12:00:00Z","labels_csv":"gt:message,from:mayor/","assignee_match":1,"cc_match":0},{"id":"wisp-direct-hooked","title":"Wisp direct hooked","description":"","status":"hooked","priority":2,"assignee":"gastown/synth","created_at":"2026-06-12T11:59:59Z","updated_at":"2026-06-12T11:59:59Z","labels_csv":"gt:message,from:mayor/","assignee_match":1,"cc_match":0},{"id":"wisp-cc-open","title":"Wisp CC open","description":"","status":"open","priority":2,"assignee":"mayor/","created_at":"2026-06-12T11:59:58Z","updated_at":"2026-06-12T11:59:58Z","labels_csv":"gt:message,cc:gastown/synth,from:mayor/","assignee_match":0,"cc_match":1},{"id":"wisp-cc-hooked","title":"Wisp CC hooked","description":"","status":"hooked","priority":2,"assignee":"mayor/","created_at":"2026-06-12T11:59:57Z","updated_at":"2026-06-12T11:59:57Z","labels_csv":"gt:message,cc:gastown/synth,from:mayor/","assignee_match":0,"cc_match":1},{"id":"issue-direct-open","title":"Duplicate wisp","description":"","status":"open","priority":2,"assignee":"gastown/synth","created_at":"2026-06-12T11:59:56Z","updated_at":"2026-06-12T11:59:56Z","labels_csv":"gt:message,from:mayor/","assignee_match":1,"cc_match":0}]'
+  exit 0
+fi
+printf 'unexpected bd args: %s\n' "$*" >&2
+exit 1
+`
+	if err := os.WriteFile(fakeBD, []byte(script), 0755); err != nil {
+		t.Fatalf("write fake bd: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("BD_LOG", logPath)
+
+	m := NewMailboxWithBeadsDir("gastown/synth", t.TempDir(), beadsDir)
+	msgs, err := m.listFromDir(beadsDir)
+	if err != nil {
+		t.Fatalf("listFromDir: %v", err)
+	}
+
+	byID := make(map[string]*Message)
+	for _, msg := range msgs {
+		byID[msg.ID] = msg
+	}
+	wantPresent := []string{
+		"issue-direct-open",
+		"issue-direct-hooked",
+		"issue-cc-open",
+		"wisp-direct-open",
+		"wisp-direct-hooked",
+		"wisp-cc-open",
+	}
+	for _, id := range wantPresent {
+		if byID[id] == nil {
+			t.Fatalf("missing message %s in %#v", id, byID)
+		}
+	}
+	wantAbsent := []string{
+		"issue-direct-closed",
+		"issue-cc-hooked",
+		"wisp-cc-hooked",
+	}
+	for _, id := range wantAbsent {
+		if byID[id] != nil {
+			t.Fatalf("unexpected message %s in inbox", id)
+		}
+	}
+	if byID["issue-direct-open"].Wisp {
+		t.Fatal("issue duplicate should keep issue result, not later wisp result")
+	}
+	for _, id := range []string{"wisp-direct-open", "wisp-direct-hooked", "wisp-cc-open"} {
+		if !byID[id].Wisp {
+			t.Fatalf("%s should be marked as wisp", id)
+		}
+	}
+
+	logBytes, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read fake bd log: %v", err)
+	}
+	if got := strings.Count(string(logBytes), "sql "); got != 1 {
+		t.Fatalf("bd sql calls = %d, want 1; log:\n%s", got, string(logBytes))
+	}
+}
+
+func TestQueryWispMessagesEscapesIdentitySQLLiterals(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fake bd is POSIX-only")
+	}
+
+	binDir := t.TempDir()
+	sqlLogPath := filepath.Join(t.TempDir(), "bd-sql.log")
+	fakeBD := filepath.Join(binDir, "bd")
+	script := `#!/bin/sh
+if [ "$1" = "sql" ]; then
+  printf '%s\n' "$3" >> "$BD_SQL_LOG"
+  printf '%s\n' '[]'
+  exit 0
+fi
+printf 'unexpected bd args: %s\n' "$*" >&2
+exit 1
+`
+	if err := os.WriteFile(fakeBD, []byte(script), 0755); err != nil {
+		t.Fatalf("write fake bd: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("BD_SQL_LOG", sqlLogPath)
+
+	m := NewMailboxWithBeadsDir("mayor/", t.TempDir(), t.TempDir())
+	_, err := m.queryWispMessages(t.TempDir(), []string{"mayor/", "mayor", `rig/o\'malley`})
+	if err != nil {
+		t.Fatalf("queryWispMessages: %v", err)
+	}
+
+	sqlLog, err := os.ReadFile(sqlLogPath)
+	if err != nil {
+		t.Fatalf("read SQL log: %v", err)
+	}
+	queries := strings.Split(strings.TrimSpace(string(sqlLog)), "\n")
+	if len(queries) != 1 {
+		t.Fatalf("bd sql calls = %d, want 1; log:\n%s", len(queries), string(sqlLog))
+	}
+	sql := queries[0]
+	for _, want := range []string{
+		`'mayor/'`,
+		`'mayor'`,
+		`'cc:mayor/'`,
+		`'cc:mayor'`,
+		`'rig/o\\''malley'`,
+		`'cc:rig/o\\''malley'`,
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("generated SQL missing %q:\n%s", want, sql)
+		}
+	}
+}
+
+func TestSQLStringListEscapesSQLLiterals(t *testing.T) {
+	tests := []struct {
+		name   string
+		values []string
+		want   string
+	}{
+		{name: "plain", values: []string{"mayor"}, want: `'mayor'`},
+		{name: "quote", values: []string{"o'brien"}, want: `'o''brien'`},
+		{name: "backslash", values: []string{`rig\agent`}, want: `'rig\\agent'`},
+		{name: "trailing backslash", values: []string{`rig\`}, want: `'rig\\'`},
+		{name: "quote after backslash", values: []string{`rig/o\'malley`}, want: `'rig/o\\''malley'`},
+		{name: "list", values: []string{"mayor/", `rig/o\'malley`}, want: `'mayor/','rig/o\\''malley'`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sqlStringList(tt.values); got != tt.want {
+				t.Fatalf("sqlStringList(%#v) = %q, want %q", tt.values, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseWispTimestamp(t *testing.T) {
+	want := time.Date(2026, 6, 12, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name  string
+		value string
+		want  time.Time
+		ok    bool
+	}{
+		{name: "rfc3339", value: "2026-06-12T12:00:00Z", want: want, ok: true},
+		{name: "rfc3339 offset", value: "2026-06-12T08:00:00-04:00", want: want, ok: true},
+		{name: "go utc", value: "2026-06-12 12:00:00 +0000 UTC", want: want, ok: true},
+		{name: "sql datetime", value: "2026-06-12 12:00:00", want: want, ok: true},
+		{name: "empty"},
+		{name: "malformed", value: "not a timestamp"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := parseWispTimestamp(tt.value)
+			if ok != tt.ok {
+				t.Fatalf("parseWispTimestamp(%q) ok = %v, want %v", tt.value, ok, tt.ok)
+			}
+			if ok && !got.Equal(tt.want) {
+				t.Fatalf("parseWispTimestamp(%q) = %v, want %v", tt.value, got, tt.want)
+			}
+			if ok && got.Location() != time.UTC {
+				t.Fatalf("parseWispTimestamp(%q) location = %v, want UTC", tt.value, got.Location())
+			}
+		})
 	}
 }
 
@@ -507,3 +762,147 @@ func TestMailboxLegacyMarkReadTwice(t *testing.T) {
 	}
 }
 
+func TestMailboxLegacyCorruptionDetection(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := NewMailbox(tmpDir)
+
+	// Write a valid message followed by a corrupt line
+	msg := &Message{ID: "msg-001", Subject: "Valid"}
+	if err := m.Append(msg); err != nil {
+		t.Fatalf("Append error: %v", err)
+	}
+
+	// Manually append a corrupt line
+	f, err := os.OpenFile(m.path, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatalf("OpenFile error: %v", err)
+	}
+	if _, err := f.WriteString("this is not valid json\n"); err != nil {
+		t.Fatalf("WriteString error: %v", err)
+	}
+	f.Close()
+
+	// List should return error mentioning corruption
+	_, err = m.List()
+	if err == nil {
+		t.Fatal("List should return error for corrupt mailbox")
+	}
+	if !strings.Contains(err.Error(), "corrupt mailbox") {
+		t.Errorf("error should mention corruption, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "line 2") {
+		t.Errorf("error should mention line number, got: %v", err)
+	}
+}
+
+func TestMailboxLegacyArchiveCorruptionDetection(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := NewMailbox(tmpDir)
+
+	// Create a corrupt archive file
+	archivePath := m.ArchivePath()
+	if err := os.WriteFile(archivePath, []byte("{bad json\n"), 0644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	_, err := m.ListArchived()
+	if err == nil {
+		t.Fatal("ListArchived should return error for corrupt archive")
+	}
+	if !strings.Contains(err.Error(), "corrupt archive") {
+		t.Errorf("error should mention corruption, got: %v", err)
+	}
+}
+
+func TestMailboxLegacyConcurrentMarkRead(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := NewMailbox(tmpDir)
+
+	// Add messages
+	for i := 0; i < 10; i++ {
+		msg := &Message{
+			ID:        fmt.Sprintf("msg-%03d", i),
+			Subject:   fmt.Sprintf("Subject %d", i),
+			Read:      false,
+			Timestamp: time.Now().Add(time.Duration(i) * time.Minute),
+		}
+		if err := m.Append(msg); err != nil {
+			t.Fatalf("Append error: %v", err)
+		}
+	}
+
+	// Concurrently mark different messages as read
+	var wg sync.WaitGroup
+	errs := make([]error, 10)
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			errs[idx] = m.MarkRead(fmt.Sprintf("msg-%03d", idx))
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("MarkRead msg-%03d error: %v", i, err)
+		}
+	}
+
+	// All messages should be marked as read
+	messages, err := m.List()
+	if err != nil {
+		t.Fatalf("List error: %v", err)
+	}
+	if len(messages) != 10 {
+		t.Fatalf("Expected 10 messages, got %d", len(messages))
+	}
+	for _, msg := range messages {
+		if !msg.Read {
+			t.Errorf("Message %s should be marked as read", msg.ID)
+		}
+	}
+}
+
+func TestMailboxLegacyAtomicArchive(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := NewMailbox(tmpDir)
+
+	// Add messages
+	msgs := []*Message{
+		{ID: "msg-001", Subject: "First", Timestamp: time.Now().Add(-2 * time.Hour)},
+		{ID: "msg-002", Subject: "Second", Timestamp: time.Now().Add(-1 * time.Hour)},
+		{ID: "msg-003", Subject: "Third", Timestamp: time.Now()},
+	}
+	for _, msg := range msgs {
+		if err := m.Append(msg); err != nil {
+			t.Fatalf("Append error: %v", err)
+		}
+	}
+
+	// Archive the middle message
+	if err := m.Archive("msg-002"); err != nil {
+		t.Fatalf("Archive error: %v", err)
+	}
+
+	// Inbox should have 2 messages
+	inbox, err := m.List()
+	if err != nil {
+		t.Fatalf("List error: %v", err)
+	}
+	if len(inbox) != 2 {
+		t.Fatalf("Expected 2 inbox messages, got %d", len(inbox))
+	}
+
+	// Archive should have 1 message
+	archived, err := m.ListArchived()
+	if err != nil {
+		t.Fatalf("ListArchived error: %v", err)
+	}
+	if len(archived) != 1 {
+		t.Fatalf("Expected 1 archived message, got %d", len(archived))
+	}
+	if archived[0].ID != "msg-002" {
+		t.Errorf("Archived message ID = %q, want msg-002", archived[0].ID)
+	}
+}

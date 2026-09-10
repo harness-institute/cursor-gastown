@@ -27,7 +27,7 @@ Observe the current system state to inform triage decisions.
 **Step 1: Check Deacon state**
 ```bash
 # Is Deacon session alive?
-tmux has-session -t gt-deacon 2>/dev/null && echo "alive" || echo "dead"
+tmux has-session -t hq-deacon 2>/dev/null && echo "alive" || echo "dead"
 
 # If alive, what's the pane output showing?
 gt peek deacon --lines 20
@@ -47,7 +47,7 @@ bd show hq-deacon 2>/dev/null
 gt feed --since 10m --plain | head -20
 
 # Recent wisps (operational state)
-ls -lt ~/gt/.beads-wisp/*.wisp.json 2>/dev/null | head -5
+ls -lt $GT_ROOT/.beads-wisp/*.wisp.json 2>/dev/null | head -5
 ```
 
 **Step 4: Check Deacon mail**
@@ -102,7 +102,7 @@ Signs of working:
 **Output**: Record decision as one of:
 - NOTHING: Let Deacon continue
 - NUDGE: Gentle wake signal (gt nudge)
-- WAKE: Stronger wake (escape + message)
+- WAKE: Stronger wake (immediate gt nudge)
 - INTERRUPT: Force restart needed
 - START: Session is dead, start fresh
 """
@@ -119,19 +119,14 @@ No action needed. Log observation and exit.
 
 **NUDGE**
 ```bash
-gt nudge deacon "Boot check-in: you have pending work"
+# Use --mode=queue to avoid interrupting in-flight tool calls
+gt nudge --mode=queue deacon "Boot check-in: you have pending work"
 ```
 
 **WAKE**
 ```bash
-# Send escape to break any tool waiting
-tmux send-keys -t gt-deacon Escape
-
-# Brief pause
-sleep 1
-
-# Send wake message
-gt nudge deacon "Boot wake: please check your inbox and pending work"
+# Raw tmux send-keys is blocked for Boot; it can leave unsubmitted input staged.
+gt nudge --mode=immediate deacon "Boot wake: please check your inbox and pending work"
 ```
 
 **INTERRUPT**
@@ -148,9 +143,9 @@ If you're making progress, please update your agent bead to reflect activity."
 
 **START**
 ```bash
-# Deacon is dead - daemon will restart it
-# Just log that we detected this
-echo "Boot detected dead Deacon session - daemon will restart"
+# Deacon is dead - start it immediately
+gt deacon start
+echo "Boot started Deacon session"
 ```
 
 Record action taken for status update.
@@ -221,7 +216,7 @@ Then exit. The next daemon tick will spawn a fresh Boot.
 **Update status file**
 ```bash
 # The gt boot command handles this automatically
-# Status is written to ~/gt/deacon/dogs/boot/.boot-status.json
+# Status is written to $GT_ROOT/deacon/dogs/boot/.boot-status.json
 ```
 
 Boot is ephemeral by design. Each instance runs fresh.

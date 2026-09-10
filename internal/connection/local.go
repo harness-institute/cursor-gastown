@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // LocalConnection implements Connection for local file and command operations.
@@ -161,8 +161,9 @@ func (c *LocalConnection) TmuxNewSession(name, dir string) error {
 }
 
 // TmuxKillSession terminates a tmux session.
+// Uses KillSessionWithProcesses to ensure all descendant processes are killed.
 func (c *LocalConnection) TmuxKillSession(name string) error {
-	return c.tmux.KillSession(name)
+	return c.tmux.KillSessionWithProcesses(name)
 }
 
 // TmuxSendKeys sends keys to a tmux session.

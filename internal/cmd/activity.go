@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/events"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/events"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // Activity emit command flags
@@ -188,7 +188,7 @@ func runActivityEmit(cmd *cobra.Command, args []string) error {
 
 	// Print confirmation
 	payloadJSON, _ := json.Marshal(payload)
-	fmt.Printf("%s Emitted %s event\n", style.Success.Render("[OK]"), style.Bold.Render(eventType))
+	fmt.Printf("%s Emitted %s event\n", style.Success.Render("✓"), style.Bold.Render(eventType))
 	fmt.Printf("  Actor:   %s\n", actor)
 	fmt.Printf("  Payload: %s\n", string(payloadJSON))
 

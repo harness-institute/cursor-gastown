@@ -2,12 +2,16 @@ package doctor
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
 )
 
 // SettingsCheck verifies each rig has a settings/ directory.
@@ -23,6 +27,7 @@ func NewSettingsCheck() *SettingsCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "rig-settings",
 				CheckDescription: "Check that rigs have settings/ directory",
+				CheckCategory:    CategoryConfig,
 			},
 		},
 	}
@@ -104,6 +109,7 @@ func NewRuntimeGitignoreCheck() *RuntimeGitignoreCheck {
 		BaseCheck: BaseCheck{
 			CheckName:        "runtime-gitignore",
 			CheckDescription: "Check that .runtime/ directories are gitignored",
+			CheckCategory:    CategoryConfig,
 		},
 	}
 }
@@ -193,6 +199,7 @@ func NewLegacyGastownCheck() *LegacyGastownCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "legacy-gastown",
 				CheckDescription: "Check for old .gastown/ directories that should be migrated",
+				CheckCategory:    CategoryConfig,
 			},
 		},
 	}
@@ -267,38 +274,39 @@ func (c *SettingsCheck) findRigs(townRoot string) []string {
 	return findAllRigs(townRoot)
 }
 
-// SessionHookCheck verifies settings.json files use session-start.sh for proper
-// session_id passthrough. Without this wrapper, gt seance cannot discover sessions.
+// SessionHookCheck verifies settings.json files use proper session_id passthrough.
+// Valid options: session-start.sh wrapper OR 'gt prime --hook'.
+// Without proper config, gt seance cannot discover sessions.
 type SessionHookCheck struct {
-	BaseCheck
+	FixableCheck
+	filesToFix []string // Cached during Run for use in Fix
 }
 
 // NewSessionHookCheck creates a new session hook check.
 func NewSessionHookCheck() *SessionHookCheck {
 	return &SessionHookCheck{
-		BaseCheck: BaseCheck{
-			CheckName:        "session-hooks",
-			CheckDescription: "Check that settings.json hooks use session-start.sh",
+		FixableCheck: FixableCheck{
+			BaseCheck: BaseCheck{
+				CheckName:        "session-hooks",
+				CheckDescription: "Check that settings.json hooks use session-start.sh or --hook flag",
+				CheckCategory:    CategoryConfig,
+			},
 		},
 	}
 }
 
-// Run checks if all settings.json files use session-start.sh wrapper.
-// NOTE: This check validates Cursor hooks configuration. The .cursor/hooks.json
-// files are skipped since Cursor uses .cursor/ directories with different hooks.
+// Run checks if all settings.json files use session-start.sh or --hook flag.
 func (c *SessionHookCheck) Run(ctx *CheckContext) *CheckResult {
 	var issues []string
 	var checked int
+
+	// Reset cache
+	c.filesToFix = nil
 
 	// Find all settings.json files in the town
 	settingsFiles := c.findSettingsFiles(ctx.TownRoot)
 
 	for _, settingsPath := range settingsFiles {
-		// Skip .cursor/hooks.json files - these are handled by cursor-settings check
-		if strings.Contains(settingsPath, ".cursor"+string(filepath.Separator)) {
-			continue
-		}
-
 		relPath, _ := filepath.Rel(ctx.TownRoot, settingsPath)
 
 		problems := c.checkSettingsFile(settingsPath)
@@ -306,23 +314,17 @@ func (c *SessionHookCheck) Run(ctx *CheckContext) *CheckResult {
 			for _, problem := range problems {
 				issues = append(issues, fmt.Sprintf("%s: %s", relPath, problem))
 			}
+			// Cache file for Fix
+			c.filesToFix = append(c.filesToFix, settingsPath)
 		}
 		checked++
-	}
-
-	if checked == 0 {
-		return &CheckResult{
-			Name:    c.Name(),
-			Status:  StatusOK,
-			Message: "No applicable settings.json files (Cursor mode)",
-		}
 	}
 
 	if len(issues) == 0 {
 		return &CheckResult{
 			Name:    c.Name(),
 			Status:  StatusOK,
-			Message: fmt.Sprintf("All %d settings.json file(s) use session-start.sh", checked),
+			Message: fmt.Sprintf("All %d settings.json file(s) use proper session_id passthrough", checked),
 		}
 	}
 
@@ -331,8 +333,103 @@ func (c *SessionHookCheck) Run(ctx *CheckContext) *CheckResult {
 		Status:  StatusWarning,
 		Message: fmt.Sprintf("%d hook issue(s) found across settings.json files", len(issues)),
 		Details: issues,
-		FixHint: "Update hooks in .cursor/hooks.json for proper session_id passthrough",
+		FixHint: "Run 'gt doctor --fix' to update hooks to use 'gt prime --hook'",
 	}
+}
+
+// Fix updates settings.json files to use 'gt prime --hook' instead of bare 'gt prime'.
+func (c *SessionHookCheck) Fix(ctx *CheckContext) error {
+	for _, path := range c.filesToFix {
+		if err := c.fixSettingsFile(path); err != nil {
+			return fmt.Errorf("failed to fix %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+// fixSettingsFile updates a single settings.json file.
+func (c *SessionHookCheck) fixSettingsFile(path string) error {
+	// Read file
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	// Parse JSON to get structure
+	var settings map[string]interface{}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	// Get hooks section
+	hooks, ok := settings["hooks"].(map[string]interface{})
+	if !ok {
+		return nil // No hooks section, nothing to fix
+	}
+
+	modified := false
+
+	// Fix SessionStart and PreCompact hooks
+	for _, hookType := range []string{"SessionStart", "PreCompact"} {
+		hookList, ok := hooks[hookType].([]interface{})
+		if !ok {
+			continue
+		}
+
+		for _, hookEntry := range hookList {
+			entry, ok := hookEntry.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			hooksList, ok := entry["hooks"].([]interface{})
+			if !ok {
+				continue
+			}
+
+			for _, hook := range hooksList {
+				hookMap, ok := hook.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				command, ok := hookMap["command"].(string)
+				if !ok {
+					continue
+				}
+
+				// Check if command has 'gt prime' without --hook
+				if strings.Contains(command, "gt prime") && !containsFlag(command, "--hook") {
+					// Replace 'gt prime' with 'gt prime --hook'
+					newCommand := strings.Replace(command, "gt prime", "gt prime --hook", -1)
+					hookMap["command"] = newCommand
+					modified = true
+				}
+			}
+		}
+	}
+
+	if !modified {
+		return nil
+	}
+
+	// Marshal back to JSON with indentation, without HTML escaping
+	// (json.MarshalIndent escapes & as \u0026 which is valid but less readable)
+	buf := new(strings.Builder)
+	encoder := json.NewEncoder(buf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(settings); err != nil {
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+	newData := []byte(buf.String())
+
+	// Write back
+	if err := os.WriteFile(path, newData, 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
 }
 
 // checkSettingsFile checks a single settings.json file for hook issues.
@@ -349,22 +446,22 @@ func (c *SessionHookCheck) checkSettingsFile(path string) []string {
 	// Check for SessionStart hooks
 	if strings.Contains(content, "SessionStart") {
 		if !c.usesSessionStartScript(content, "SessionStart") {
-			problems = append(problems, "SessionStart uses bare 'gt prime' (missing session_id passthrough)")
+			problems = append(problems, "SessionStart uses bare 'gt prime' - add --hook flag or use session-start.sh")
 		}
 	}
 
 	// Check for PreCompact hooks
 	if strings.Contains(content, "PreCompact") {
 		if !c.usesSessionStartScript(content, "PreCompact") {
-			problems = append(problems, "PreCompact uses bare 'gt prime' (missing session_id passthrough)")
+			problems = append(problems, "PreCompact uses bare 'gt prime' - add --hook flag or use session-start.sh")
 		}
 	}
 
 	return problems
 }
 
-// usesSessionStartScript checks if the hook configuration uses session-start.sh.
-// Returns true if the hook is properly configured or if no hook is configured.
+// usesSessionStartScript checks if the hook configuration handles session_id properly.
+// Valid: session-start.sh wrapper OR 'gt prime --hook'. Returns true if properly configured.
 func (c *SessionHookCheck) usesSessionStartScript(content, hookType string) bool {
 	// Find the hook section - look for the hook type followed by its configuration
 	// This is a simple heuristic - we look for "gt prime" without session-start.sh
@@ -397,10 +494,15 @@ func (c *SessionHookCheck) usesSessionStartScript(content, hookType string) bool
 		return true // Uses the wrapper script
 	}
 
-	// Check if it uses bare 'gt prime' without the wrapper
-	// Patterns to detect: "gt prime", "'gt prime'", "gt prime\""
+	// Check if it uses 'gt prime --hook' which handles session_id via stdin
 	if strings.Contains(section, "gt prime") {
-		return false // Uses bare gt prime without session-start.sh
+		// gt prime --hook is valid - it reads session_id from stdin JSON
+		// Must match --hook as complete flag, not substring (e.g., --hookup)
+		if containsFlag(section, "--hook") {
+			return true
+		}
+		// Bare 'gt prime' without --hook doesn't get session_id
+		return false
 	}
 
 	// No gt prime or session-start.sh found - might be a different hook configuration
@@ -408,78 +510,46 @@ func (c *SessionHookCheck) usesSessionStartScript(content, hookType string) bool
 }
 
 // findSettingsFiles finds all settings.json files in the town.
+// Settings are installed in gastown-managed parent directories and passed via --settings flag.
 func (c *SessionHookCheck) findSettingsFiles(townRoot string) []string {
 	var files []string
 
-	// Town root
-	townSettings := filepath.Join(townRoot, ".cursor", "hooks.json")
-	if _, err := os.Stat(townSettings); err == nil {
-		files = append(files, townSettings)
+	// Town-level agents: mayor and deacon (settings in their own dir)
+	mayorSettings := filepath.Join(townRoot, "mayor", ".claude", "settings.json")
+	if _, err := os.Stat(mayorSettings); err == nil {
+		files = append(files, mayorSettings)
+	}
+
+	deaconSettings := filepath.Join(townRoot, "deacon", ".claude", "settings.json")
+	if _, err := os.Stat(deaconSettings); err == nil {
+		files = append(files, deaconSettings)
 	}
 
 	// Find all rigs
 	rigs := findAllRigs(townRoot)
 	for _, rig := range rigs {
-		// Rig root
-		rigSettings := filepath.Join(rig, ".cursor", "hooks.json")
-		if _, err := os.Stat(rigSettings); err == nil {
-			files = append(files, rigSettings)
-		}
-
-		// Mayor/rig
-		mayorRigSettings := filepath.Join(rig, "mayor", "rig", ".cursor", "hooks.json")
-		if _, err := os.Stat(mayorRigSettings); err == nil {
-			files = append(files, mayorRigSettings)
-		}
-
-		// Witness
-		witnessSettings := filepath.Join(rig, "witness", ".cursor", "hooks.json")
+		// Witness - settings in parent directory (witness/)
+		witnessSettings := filepath.Join(rig, "witness", ".claude", "settings.json")
 		if _, err := os.Stat(witnessSettings); err == nil {
 			files = append(files, witnessSettings)
 		}
 
-		// Witness/rig
-		witnessRigSettings := filepath.Join(rig, "witness", "rig", ".cursor", "hooks.json")
-		if _, err := os.Stat(witnessRigSettings); err == nil {
-			files = append(files, witnessRigSettings)
-		}
-
-		// Refinery
-		refinerySettings := filepath.Join(rig, "refinery", ".cursor", "hooks.json")
+		// Refinery - settings in parent directory (refinery/)
+		refinerySettings := filepath.Join(rig, "refinery", ".claude", "settings.json")
 		if _, err := os.Stat(refinerySettings); err == nil {
 			files = append(files, refinerySettings)
 		}
 
-		// Refinery/rig
-		refineryRigSettings := filepath.Join(rig, "refinery", "rig", ".cursor", "hooks.json")
-		if _, err := os.Stat(refineryRigSettings); err == nil {
-			files = append(files, refineryRigSettings)
+		// Crew - shared settings in parent directory (crew/)
+		crewSettings := filepath.Join(rig, "crew", ".claude", "settings.json")
+		if _, err := os.Stat(crewSettings); err == nil {
+			files = append(files, crewSettings)
 		}
 
-		// Crew members
-		crewPath := filepath.Join(rig, "crew")
-		if crewEntries, err := os.ReadDir(crewPath); err == nil {
-			for _, crew := range crewEntries {
-				if crew.IsDir() && !strings.HasPrefix(crew.Name(), ".") {
-					crewSettings := filepath.Join(crewPath, crew.Name(), ".cursor", "hooks.json")
-					if _, err := os.Stat(crewSettings); err == nil {
-						files = append(files, crewSettings)
-					}
-				}
-			}
-		}
-
-		// Polecats
-		polecatsPath := filepath.Join(rig, "polecats")
-		if polecatEntries, err := os.ReadDir(polecatsPath); err == nil {
-			for _, polecat := range polecatEntries {
-				if polecat.IsDir() && !strings.HasPrefix(polecat.Name(), ".") {
-					polecatSettings := filepath.Join(polecatsPath, polecat.Name(), ".cursor", "hooks.json")
-					if _, err := os.Stat(polecatSettings); err == nil {
-						files = append(files, polecatSettings)
-					}
-				}
-			}
+		// Polecats - shared settings in parent directory (polecats/)
+		polecatSettings := filepath.Join(rig, "polecats", ".claude", "settings.json")
+		if _, err := os.Stat(polecatSettings); err == nil {
+			files = append(files, polecatSettings)
 		}
 	}
 
@@ -518,4 +588,366 @@ func findAllRigs(townRoot string) []string {
 	}
 
 	return rigs
+}
+
+func containsFlag(s, flag string) bool {
+	idx := strings.Index(s, flag)
+	if idx == -1 {
+		return false
+	}
+	end := idx + len(flag)
+	if end >= len(s) {
+		return true
+	}
+	next := s[end]
+	return next == '"' || next == ' ' || next == '\'' || next == '\n' || next == '\t'
+}
+
+// CustomTypesCheck verifies Gas Town custom types are registered with beads.
+type CustomTypesCheck struct {
+	FixableCheck
+	missingTypes   []string // Cached during Run for use in Fix
+	targetBeadsDir string   // Cached during Run for use in Fix
+}
+
+// NewCustomTypesCheck creates a new custom types check.
+func NewCustomTypesCheck() *CustomTypesCheck {
+	return &CustomTypesCheck{
+		FixableCheck: FixableCheck{
+			BaseCheck: BaseCheck{
+				CheckName:        "beads-custom-types",
+				CheckDescription: "Check that Gas Town custom types are registered with beads",
+				CheckCategory:    CategoryConfig,
+			},
+		},
+	}
+}
+
+// Run checks if custom types are properly configured.
+func (c *CustomTypesCheck) Run(ctx *CheckContext) *CheckResult {
+	// Check if bd command is available
+	if _, err := exec.LookPath("bd"); err != nil {
+		return &CheckResult{
+			Name:    c.Name(),
+			Status:  StatusOK,
+			Message: "beads not installed (skipped)",
+		}
+	}
+
+	beadsDir := doctorConfigBeadsDir(ctx)
+	if _, err := os.Stat(beadsDir); os.IsNotExist(err) {
+		return &CheckResult{
+			Name:    c.Name(),
+			Status:  StatusOK,
+			Message: "No beads database (skipped)",
+		}
+	}
+
+	// Get current custom types configuration
+	// Use Output() not CombinedOutput() to avoid capturing bd's stderr messages
+	cmd := exec.Command("bd", "config", "get", "types.custom")
+	cmd.Dir = beadsDir
+	cmd.Env = doctorConfigEnv(beadsDir)
+	output, err := cmd.Output()
+	if err != nil {
+		// If config key doesn't exist, types are not configured
+		c.targetBeadsDir = beadsDir
+		c.missingTypes = constants.BeadsCustomTypesList()
+		return &CheckResult{
+			Name:    c.Name(),
+			Status:  StatusWarning,
+			Message: "Custom types not configured",
+			Details: []string{
+				"Gas Town custom types (agent, role, rig, convoy, slot) are not registered",
+				"This may cause bead creation/validation errors",
+			},
+			FixHint: "Run 'gt doctor --fix' or 'bd config set types.custom \"" + constants.BeadsCustomTypes + "\"'",
+		}
+	}
+
+	// Parse configured types, filtering out bd "Note:" messages that may appear in stdout
+	configuredTypes := parseConfigOutput(output)
+	configuredSet := make(map[string]bool)
+	if configuredTypes != "" {
+		for _, t := range strings.Split(configuredTypes, ",") {
+			configuredSet[strings.TrimSpace(t)] = true
+		}
+	}
+
+	// Check for missing required types
+	var missing []string
+	for _, required := range constants.BeadsCustomTypesList() {
+		if !configuredSet[required] {
+			missing = append(missing, required)
+		}
+	}
+
+	if len(missing) == 0 {
+		infraCmd := exec.Command("bd", "config", "get", "types.infra")
+		infraCmd.Dir = beadsDir
+		infraCmd.Env = doctorConfigEnv(beadsDir)
+		infraOutput, infraErr := infraCmd.Output()
+		configuredInfra := parseConfigOutput(infraOutput)
+		if infraErr != nil || configuredInfra != constants.BeadsInfraTypes {
+			c.targetBeadsDir = beadsDir
+			details := []string{
+				fmt.Sprintf("Configured infra types: %s", configuredInfra),
+				fmt.Sprintf("Required infra types: %s", constants.BeadsInfraTypes),
+			}
+			for _, typ := range strings.Split(configuredInfra, ",") {
+				if strings.TrimSpace(typ) == "rig" {
+					details = append(details, "rig must not be an infra type; rig identity beads are durable")
+					break
+				}
+			}
+			return &CheckResult{
+				Name:    c.Name(),
+				Status:  StatusWarning,
+				Message: "Infra types not configured for durable rig identity beads",
+				Details: details,
+				FixHint: "Run 'gt doctor --fix' to register infra types",
+			}
+		}
+		return &CheckResult{
+			Name:    c.Name(),
+			Status:  StatusOK,
+			Message: "All custom and infra types registered",
+		}
+	}
+
+	// Cache for Fix
+	c.targetBeadsDir = beadsDir
+	c.missingTypes = missing
+
+	return &CheckResult{
+		Name:    c.Name(),
+		Status:  StatusWarning,
+		Message: fmt.Sprintf("%d custom type(s) missing", len(missing)),
+		Details: []string{
+			fmt.Sprintf("Missing types: %s", strings.Join(missing, ", ")),
+			fmt.Sprintf("Configured: %s", configuredTypes),
+			fmt.Sprintf("Required: %s", constants.BeadsCustomTypes),
+		},
+		FixHint: "Run 'gt doctor --fix' to register missing types",
+	}
+}
+
+// parseConfigOutput extracts the config value from bd output, filtering out
+// informational messages like "Note: ..." that bd may emit to stdout.
+// Thin wrapper preserved so existing tests/call sites compile unchanged.
+func parseConfigOutput(output []byte) string {
+	return beads.ParseConfigOutput(output)
+}
+
+// Fix registers the missing custom types.
+func (c *CustomTypesCheck) Fix(ctx *CheckContext) error {
+	getCmd := exec.Command("bd", "config", "get", "types.custom")
+	getCmd.Dir = c.targetBeadsDir
+	getCmd.Env = doctorConfigEnv(c.targetBeadsDir)
+	existingOutput, _ := getCmd.Output()
+
+	typeSet := make(map[string]bool)
+	if existing := parseConfigOutput(existingOutput); existing != "" {
+		for _, typ := range strings.Split(existing, ",") {
+			typ = strings.TrimSpace(typ)
+			if typ != "" {
+				typeSet[typ] = true
+			}
+		}
+	}
+	for _, typ := range constants.BeadsCustomTypesList() {
+		typeSet[typ] = true
+	}
+
+	var merged []string
+	for typ := range typeSet {
+		merged = append(merged, typ)
+	}
+	sort.Strings(merged)
+
+	cmd := exec.Command("bd", "config", "set", "types.custom", strings.Join(merged, ","))
+	cmd.Dir = c.targetBeadsDir
+	cmd.Env = doctorConfigEnv(c.targetBeadsDir)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd config set types.custom: %s", strings.TrimSpace(string(output)))
+	}
+	infraCmd := exec.Command("bd", "config", "set", "types.infra", constants.BeadsInfraTypes)
+	infraCmd.Dir = c.targetBeadsDir
+	infraCmd.Env = doctorConfigEnv(c.targetBeadsDir)
+	infraOutput, err := infraCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd config set types.infra: %s", strings.TrimSpace(string(infraOutput)))
+	}
+	return nil
+}
+
+// CustomStatusesCheck verifies Gas Town custom statuses are registered with beads.
+type CustomStatusesCheck struct {
+	FixableCheck
+	missingStatuses []string // Cached during Run for use in Fix
+	targetBeadsDir  string   // Cached during Run for use in Fix
+}
+
+// NewCustomStatusesCheck creates a new custom statuses check.
+func NewCustomStatusesCheck() *CustomStatusesCheck {
+	return &CustomStatusesCheck{
+		FixableCheck: FixableCheck{
+			BaseCheck: BaseCheck{
+				CheckName:        "beads-custom-statuses",
+				CheckDescription: "Check that Gas Town custom statuses are registered with beads",
+				CheckCategory:    CategoryConfig,
+			},
+		},
+	}
+}
+
+// Run checks if custom statuses are properly configured.
+func (c *CustomStatusesCheck) Run(ctx *CheckContext) *CheckResult {
+	if _, err := exec.LookPath("bd"); err != nil {
+		return &CheckResult{
+			Name:    c.Name(),
+			Status:  StatusOK,
+			Message: "beads not installed (skipped)",
+		}
+	}
+
+	beadsDir := doctorConfigBeadsDir(ctx)
+	if _, err := os.Stat(beadsDir); os.IsNotExist(err) {
+		return &CheckResult{
+			Name:    c.Name(),
+			Status:  StatusOK,
+			Message: "No beads database (skipped)",
+		}
+	}
+
+	// Get current custom statuses configuration
+	cmd := exec.Command("bd", "config", "get", "status.custom")
+	cmd.Dir = beadsDir
+	cmd.Env = doctorConfigEnv(beadsDir)
+	output, err := cmd.Output()
+	if err != nil {
+		c.targetBeadsDir = beadsDir
+		c.missingStatuses = constants.BeadsCustomStatusesList()
+		return &CheckResult{
+			Name:    c.Name(),
+			Status:  StatusWarning,
+			Message: "Custom statuses not configured",
+			Details: []string{
+				"Gas Town custom statuses (staged_ready, staged_warnings) are not registered",
+				"Convoy staging will fail without these statuses",
+			},
+			FixHint: "Run 'gt doctor --fix' or 'bd config set status.custom \"" + constants.BeadsCustomStatuses + "\"'",
+		}
+	}
+
+	configuredStatuses := parseConfigOutput(output)
+	configuredSet := make(map[string]bool)
+	if configuredStatuses != "" {
+		for _, s := range strings.Split(configuredStatuses, ",") {
+			configuredSet[strings.TrimSpace(s)] = true
+		}
+	}
+
+	var missing []string
+	for _, required := range constants.BeadsCustomStatusesList() {
+		if !configuredSet[required] {
+			missing = append(missing, required)
+		}
+	}
+
+	if len(missing) == 0 {
+		return &CheckResult{
+			Name:    c.Name(),
+			Status:  StatusOK,
+			Message: "All custom statuses registered",
+		}
+	}
+
+	c.targetBeadsDir = beadsDir
+	c.missingStatuses = missing
+
+	return &CheckResult{
+		Name:    c.Name(),
+		Status:  StatusWarning,
+		Message: fmt.Sprintf("%d custom status(es) missing", len(missing)),
+		Details: []string{
+			fmt.Sprintf("Missing statuses: %s", strings.Join(missing, ", ")),
+			fmt.Sprintf("Configured: %s", configuredStatuses),
+			fmt.Sprintf("Required: %s", constants.BeadsCustomStatuses),
+		},
+		FixHint: "Run 'gt doctor --fix' to register missing statuses",
+	}
+}
+
+// Fix registers the missing custom statuses by merging with existing ones.
+func (c *CustomStatusesCheck) Fix(ctx *CheckContext) error {
+	// Read existing statuses
+	getCmd := exec.Command("bd", "config", "get", "status.custom")
+	getCmd.Dir = c.targetBeadsDir
+	getCmd.Env = doctorConfigEnv(c.targetBeadsDir)
+	existingOutput, _ := getCmd.Output()
+
+	// Build merged set
+	statusSet := make(map[string]bool)
+	if existing := parseConfigOutput(existingOutput); existing != "" {
+		for _, s := range strings.Split(existing, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				statusSet[s] = true
+			}
+		}
+	}
+	for _, s := range constants.BeadsCustomStatusesList() {
+		statusSet[s] = true
+	}
+
+	var merged []string
+	for s := range statusSet {
+		merged = append(merged, s)
+	}
+	sort.Strings(merged)
+
+	cmd := exec.Command("bd", "config", "set", "status.custom", strings.Join(merged, ","))
+	cmd.Dir = c.targetBeadsDir
+	cmd.Env = doctorConfigEnv(c.targetBeadsDir)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd config set status.custom: %s", strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func doctorConfigBeadsDir(ctx *CheckContext) string {
+	workDir := ctx.TownRoot
+	if ctx.RigName != "" {
+		workDir = ctx.RigPath()
+	}
+	return beads.ResolveBeadsDir(workDir)
+}
+
+func doctorConfigEnv(beadsDir string) []string {
+	env := stripEnvPrefixes(os.Environ(), "BEADS_DIR=", "BEADS_DB=", "BEADS_DOLT_SERVER_DATABASE=")
+	env = append(env, "BEADS_DIR="+beadsDir)
+	if dbEnv := beads.DatabaseEnv(beadsDir); dbEnv != "" {
+		env = append(env, dbEnv)
+	}
+	return env
+}
+
+func stripEnvPrefixes(env []string, prefixes ...string) []string {
+	filtered := make([]string, 0, len(env))
+	for _, entry := range env {
+		skip := false
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(entry, prefix) {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
 }
