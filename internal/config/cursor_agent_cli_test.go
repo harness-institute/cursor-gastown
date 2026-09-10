@@ -59,7 +59,7 @@ func TestCursorAgentCLIPresetMatchesHelp(t *testing.T) {
 		t.Fatal("cursor preset not found")
 	}
 
-	for _, needle := range []string{"--resume", "-f", "--force", "--print", "--output-format"} {
+	for _, needle := range []string{"--resume", "-f", "--force", "--print", "--output-format", "--trust", "--approve-mcps"} {
 		if !strings.Contains(help, strings.ToLower(needle)) {
 			t.Errorf("cursor-agent --help missing %q (preset may be stale vs CLI)", needle)
 		}

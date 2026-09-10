@@ -823,7 +823,7 @@ func TestAgentCommandGeneration(t *testing.T) {
 		{
 			preset:       AgentCursor,
 			wantCommand:  "cursor-agent",
-			wantContains: []string{"-f"},
+			wantContains: []string{"-f", "--approve-mcps", "--trust"},
 		},
 		{
 			preset:       AgentAuggie,

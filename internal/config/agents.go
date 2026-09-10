@@ -319,8 +319,8 @@ var builtinPresets = map[AgentPreset]*AgentPresetInfo{
 	AgentCursor: {
 		Name:    AgentCursor,
 		Command: "cursor-agent",
-		// -f/--force: auto-approve tool use (see cursor-agent --help). Install script also symlinks "agent" -> same binary.
-		Args: []string{"-f"},
+		// -f/--force: auto-approve tool use; --trust/--approve-mcps: non-interactive tmux sessions (see cursor-agent --help).
+		Args: []string{"-f", "--approve-mcps", "--trust"},
 		// cursor-agent + agent (install symlinks). Pane matching for "agent" requires session env (GT_AGENT=cursor or GT_PROCESS_NAMES includes cursor-agent); see internal/tmux processNamesForSession.
 		ProcessNames:        []string{"cursor-agent", "agent"},
 		SessionIDEnv:        "", // Uses --resume with chatId directly
