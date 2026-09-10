@@ -49,7 +49,9 @@ builds:
     main: ./cmd/gt
     binary: gt
     env:
-      - CGO_ENABLED=1
+      # CGO off: Linux CI runners cannot cross-compile darwin cgo, and gt
+      # runs dolt as an external process, so the ICU cgo path is not needed.
+      - CGO_ENABLED=0
     goos:
       - darwin
     goarch:
@@ -65,7 +67,8 @@ builds:
     main: ./cmd/gt
     binary: gt
     env:
-      - CGO_ENABLED=1
+      # CGO off: see gt-darwin-amd64 note.
+      - CGO_ENABLED=0
     goos:
       - darwin
     goarch:

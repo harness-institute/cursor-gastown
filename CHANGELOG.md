@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-10
+
+### Fixed
+
+- Darwin release builds use CGO_ENABLED=0 so Linux CI can cross-compile them; gt runs dolt as an external process and does not need the ICU cgo path.
+
 ## [0.2.1] - 2026-09-10
 
 ### Changed
