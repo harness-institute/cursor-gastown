@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-10
+
 ### Changed
 
 - **Rebased onto upstream Gas Town** ([gastownhall/gastown](https://github.com/gastownhall/gastown) @ 649b832, Sep 2026). The fork is no longer a frozen January snapshot; it tracks current upstream with Harness Institute branding.
