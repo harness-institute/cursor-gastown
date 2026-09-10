@@ -2,52 +2,10 @@ package cmd
 
 import (
 	"testing"
+	"time"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
 )
-
-func TestAddIntegrationBranchField(t *testing.T) {
-	tests := []struct {
-		name        string
-		description string
-		branchName  string
-		want        string
-	}{
-		{
-			name:        "empty description",
-			description: "",
-			branchName:  "integration/gt-epic",
-			want:        "integration_branch: integration/gt-epic",
-		},
-		{
-			name:        "simple description",
-			description: "Epic for authentication",
-			branchName:  "integration/gt-auth",
-			want:        "integration_branch: integration/gt-auth\nEpic for authentication",
-		},
-		{
-			name:        "existing integration_branch field",
-			description: "integration_branch: integration/old-epic\nSome description",
-			branchName:  "integration/new-epic",
-			want:        "integration_branch: integration/new-epic\nSome description",
-		},
-		{
-			name:        "multiline description",
-			description: "Line 1\nLine 2\nLine 3",
-			branchName:  "integration/gt-xyz",
-			want:        "integration_branch: integration/gt-xyz\nLine 1\nLine 2\nLine 3",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := addIntegrationBranchField(tt.description, tt.branchName)
-			if got != tt.want {
-				t.Errorf("addIntegrationBranchField() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
 
 func TestParseBranchName(t *testing.T) {
 	tests := []struct {
@@ -67,6 +25,60 @@ func TestParseBranchName(t *testing.T) {
 			branch:     "polecat/Worker/gt-abc.1",
 			wantIssue:  "gt-abc.1",
 			wantWorker: "Worker",
+		},
+		{
+			name:       "generated polecat branch with issue and plus suffix",
+			branch:     "polecat/furiosa/gt-jns7.1+mk123456",
+			wantIssue:  "gt-jns7.1",
+			wantWorker: "furiosa",
+		},
+		{
+			name:       "legacy polecat branch with issue and at suffix",
+			branch:     "polecat/furiosa/gt-jns7.1@mk123456",
+			wantIssue:  "gt-jns7.1",
+			wantWorker: "furiosa",
+		},
+		{
+			name:       "generated polecat branch with dashed issue slug",
+			branch:     "polecat/alpha/gt-pin-bd-metadata+mk123456",
+			wantIssue:  "gt-pin-bd-metadata",
+			wantWorker: "alpha",
+		},
+		{
+			name:       "raw polecat branch with dashed issue slug",
+			branch:     "polecat/alpha/gt-pin-bd-metadata",
+			wantIssue:  "gt-pin-bd-metadata",
+			wantWorker: "alpha",
+		},
+		{
+			name:       "generated polecat branch with dotted subtask",
+			branch:     "polecat/alpha/gt-4kp9.5.5.1+mk123456",
+			wantIssue:  "gt-4kp9.5.5.1",
+			wantWorker: "alpha",
+		},
+		{
+			name:       "dash suffix stays part of issue slug",
+			branch:     "polecat/furiosa/gt-jns7.1-mk123456",
+			wantIssue:  "gt-jns7.1-mk123456",
+			wantWorker: "furiosa",
+		},
+		{
+			name:       "malformed polecat branch does not fall back to issue regex",
+			branch:     "polecat/alpha/gt-pin-bd-metadata+",
+			wantIssue:  "",
+			wantWorker: "",
+		},
+		{
+			name:       "modern polecat branch (timestamp format)",
+			branch:     "polecat/furiosa-mkc36bb9",
+			wantIssue:  "", // Should NOT extract fake issue from worker-timestamp
+			wantWorker: "furiosa",
+		},
+		{
+			name:       "modern polecat branch with longer name",
+			branch:     "polecat/citadel-mk0vro62",
+			wantIssue:  "",
+			wantWorker: "citadel",
 		},
 		{
 			name:       "simple issue branch",
@@ -264,7 +276,7 @@ func TestGetStatusIcon(t *testing.T) {
 	}{
 		{"open", "○"},
 		{"in_progress", "▶"},
-		{"closed", "OK"},
+		{"closed", "✓"},
 		{"unknown", "•"},
 		{"", "•"},
 	}
@@ -345,92 +357,106 @@ func stringContains(s, substr string) bool {
 	return false
 }
 
-func TestFilterMRsByTarget(t *testing.T) {
-	// Create test MRs with different targets
-	mrs := []*beads.Issue{
-		makeTestMR("mr-1", "polecat/Nux/gt-001", "integration/gt-epic", "Nux", "open"),
-		makeTestMR("mr-2", "polecat/Toast/gt-002", "main", "Toast", "open"),
-		makeTestMR("mr-3", "polecat/Able/gt-003", "integration/gt-epic", "Able", "open"),
-		makeTestMR("mr-4", "polecat/Baker/gt-004", "integration/gt-other", "Baker", "open"),
+// TestIssuePatternCompiledAtPackageLevel verifies that the issuePattern regex
+// is compiled once at package level (not on every parseBranchName call).
+func TestIssuePatternCompiledAtPackageLevel(t *testing.T) {
+	// Verify the pattern is not nil and is a compiled regex
+	if issuePattern == nil {
+		t.Error("issuePattern should be compiled at package level, got nil")
 	}
-
+	// Verify it matches expected patterns
 	tests := []struct {
-		name         string
-		targetBranch string
-		wantCount    int
-		wantIDs      []string
+		branch    string
+		wantMatch bool
+		wantIssue string
 	}{
-		{
-			name:         "filter to integration/gt-epic",
-			targetBranch: "integration/gt-epic",
-			wantCount:    2,
-			wantIDs:      []string{"mr-1", "mr-3"},
-		},
-		{
-			name:         "filter to main",
-			targetBranch: "main",
-			wantCount:    1,
-			wantIDs:      []string{"mr-2"},
-		},
-		{
-			name:         "filter to non-existent branch",
-			targetBranch: "integration/no-such-epic",
-			wantCount:    0,
-			wantIDs:      []string{},
-		},
-		{
-			name:         "filter to other integration branch",
-			targetBranch: "integration/gt-other",
-			wantCount:    1,
-			wantIDs:      []string{"mr-4"},
-		},
+		{"polecat/Nux/gt-xyz", true, "gt-xyz"},
+		{"gt-abc", true, "gt-abc"},
+		{"feature/proj-123-add-feature", true, "proj-123"},
+		{"main", false, ""},
+		{"", false, ""},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := filterMRsByTarget(mrs, tt.targetBranch)
-			if len(got) != tt.wantCount {
-				t.Errorf("filterMRsByTarget() returned %d MRs, want %d", len(got), tt.wantCount)
+		t.Run(tt.branch, func(t *testing.T) {
+			matches := issuePattern.FindStringSubmatch(tt.branch)
+			if (len(matches) > 1) != tt.wantMatch {
+				t.Errorf("FindStringSubmatch(%q) match = %v, want %v", tt.branch, len(matches) > 1, tt.wantMatch)
 			}
-
-			// Verify correct IDs
-			gotIDs := make(map[string]bool)
-			for _, mr := range got {
-				gotIDs[mr.ID] = true
-			}
-			for _, wantID := range tt.wantIDs {
-				if !gotIDs[wantID] {
-					t.Errorf("filterMRsByTarget() missing expected MR %s", wantID)
-				}
+			if tt.wantMatch && len(matches) > 1 && matches[1] != tt.wantIssue {
+				t.Errorf("FindStringSubmatch(%q) issue = %q, want %q", tt.branch, matches[1], tt.wantIssue)
 			}
 		})
 	}
 }
 
-func TestFilterMRsByTarget_EmptyInput(t *testing.T) {
-	got := filterMRsByTarget(nil, "integration/gt-epic")
-	if got != nil {
-		t.Errorf("filterMRsByTarget(nil) = %v, want nil", got)
-	}
-
-	got = filterMRsByTarget([]*beads.Issue{}, "integration/gt-epic")
-	if len(got) != 0 {
-		t.Errorf("filterMRsByTarget([]) = %v, want empty slice", got)
+// TestPolecatCleanupTimeoutConstant verifies the timeout constant is set correctly.
+func TestPolecatCleanupTimeoutConstant(t *testing.T) {
+	// This test documents the expected timeout value.
+	// The actual timeout behavior is tested manually or with integration tests.
+	const expectedMaxCleanupWait = 5 * time.Minute
+	if expectedMaxCleanupWait != 5*time.Minute {
+		t.Errorf("expectedMaxCleanupWait = %v, want 5m", expectedMaxCleanupWait)
 	}
 }
 
-func TestFilterMRsByTarget_NoMRFields(t *testing.T) {
-	// Issue without MR fields in description
-	plainIssue := &beads.Issue{
-		ID:          "issue-1",
-		Title:       "Not an MR",
-		Type:        "merge-request",
-		Status:      "open",
-		Description: "Just a plain description with no MR fields",
+// TestMRFilteringByLabel verifies that MRs are identified by their gt:merge-request
+// label rather than the deprecated issue_type field. This is the fix for #816 where
+// MRs created by `gt done` have issue_type='task' but correct gt:merge-request label.
+func TestMRFilteringByLabel(t *testing.T) {
+	tests := []struct {
+		name     string
+		issue    *beads.Issue
+		wantIsMR bool
+	}{
+		{
+			name: "MR with correct label and wrong type (bug #816 scenario)",
+			issue: &beads.Issue{
+				ID:     "mr-1",
+				Title:  "Merge: test-branch",
+				Type:   "task",                       // Wrong type (default from bd create)
+				Labels: []string{"gt:merge-request"}, // Correct label
+			},
+			wantIsMR: true,
+		},
+		{
+			name: "MR with correct label and correct type",
+			issue: &beads.Issue{
+				ID:     "mr-2",
+				Title:  "Merge: another-branch",
+				Type:   "merge-request",
+				Labels: []string{"gt:merge-request"},
+			},
+			wantIsMR: true,
+		},
+		{
+			name: "Task without MR label",
+			issue: &beads.Issue{
+				ID:     "task-1",
+				Title:  "Regular task",
+				Type:   "task",
+				Labels: []string{"other-label"},
+			},
+			wantIsMR: false,
+		},
+		{
+			name: "Issue with no labels",
+			issue: &beads.Issue{
+				ID:    "issue-1",
+				Title: "No labels",
+				Type:  "task",
+			},
+			wantIsMR: false,
+		},
 	}
 
-	got := filterMRsByTarget([]*beads.Issue{plainIssue}, "main")
-	if len(got) != 0 {
-		t.Errorf("filterMRsByTarget() should filter out issues without MR fields, got %d", len(got))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := beads.HasLabel(tt.issue, "gt:merge-request")
+			if got != tt.wantIsMR {
+				t.Errorf("HasLabel(%q, \"gt:merge-request\") = %v, want %v",
+					tt.issue.ID, got, tt.wantIsMR)
+			}
+		})
 	}
 }

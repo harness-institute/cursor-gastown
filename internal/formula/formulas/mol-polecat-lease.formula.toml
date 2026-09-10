@@ -35,7 +35,7 @@ tmux capture-pane -t gt-{{rig}}-{{polecat}} -p | tail -20
 ```
 
 Look for:
-- Cursor prompt visible ("> " at start of line)
+- Claude prompt visible ("> " at start of line)
 - `gt prime` output
 - Signs of reading the assigned issue
 
@@ -61,7 +61,7 @@ description = """
 Polecat is actively working. Monitor for stuck or completion.
 
 **Periodic checks:**
-- Use standard nudge protocol from Witness role guidance
+- Use standard nudge protocol from Witness CLAUDE.md
 - Watch for POLECAT_DONE mail or agent_state=done
 
 **Signs of progress:**
@@ -112,7 +112,8 @@ bd show {{issue}}             # Status should be 'closed'
 **If verification fails:**
 Nudge polecat to fix:
 ```bash
-gt nudge {{rig}}/polecats/{{polecat}} "Verification failed: <issue>. Please fix."
+# Use --mode=queue to avoid interrupting in-flight tool calls
+gt nudge --mode=queue {{rig}}/polecats/{{polecat}} "Verification failed: <issue>. Please fix."
 ```
 Return to working step.
 

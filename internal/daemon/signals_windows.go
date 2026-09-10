@@ -2,12 +2,22 @@
 
 package daemon
 
-import "os"
+import (
+	"os"
+	"syscall"
+)
 
-func extraSignals() []os.Signal {
-	return nil
+func daemonSignals() []os.Signal {
+	return []os.Signal{
+		syscall.SIGINT,
+		syscall.SIGTERM,
+	}
 }
 
-func isImmediateSignal(sig os.Signal) bool {
+func isLifecycleSignal(sig os.Signal) bool {
+	return false
+}
+
+func isReloadRestartSignal(sig os.Signal) bool {
 	return false
 }

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/style"
 )
 
 // MQ next command flags
@@ -58,14 +58,17 @@ func runMQNext(cmd *cobra.Command, args []string) error {
 	// Create beads wrapper for the rig
 	b := beads.New(r.BeadsPath())
 
-	// Query for open merge-requests (ready to process)
+	// Query for open merge-requests (ready to process).
+	// Use ListMergeRequests to query both issues and wisps tables,
+	// since MRs are created as ephemeral (wisps) by gt mq submit (GH#2446).
 	opts := beads.ListOptions{
-		Type:     "merge-request",
+		Label:    "gt:merge-request",
 		Status:   "open",
 		Priority: -1, // No priority filter
+		Rig:      rigName,
 	}
 
-	issues, err := b.List(opts)
+	issues, err := b.ListMergeRequests(opts)
 	if err != nil {
 		return fmt.Errorf("querying merge queue: %w", err)
 	}
@@ -73,7 +76,7 @@ func runMQNext(cmd *cobra.Command, args []string) error {
 	// Filter to only ready MRs (no blockers)
 	var ready []*beads.Issue
 	for _, issue := range issues {
-		if len(issue.BlockedBy) == 0 && issue.BlockedByCount == 0 {
+		if isMergeRequestReadyForSelection(issue) {
 			ready = append(ready, issue)
 		}
 	}

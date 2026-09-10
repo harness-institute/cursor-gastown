@@ -1,28 +1,90 @@
 package mayor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/config"
-	"github.com/cursorworkshop/cursor-gastown/internal/cursor"
-	"github.com/cursorworkshop/cursor-gastown/internal/constants"
-	"github.com/cursorworkshop/cursor-gastown/internal/session"
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/acp"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/templates"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // Common errors
 var (
 	ErrNotRunning     = errors.New("mayor not running")
 	ErrAlreadyRunning = errors.New("mayor already running")
+	ErrACPActive      = errors.New("ACP mayor is active")
 )
+
+// Mode represents the mayor session mode.
+type Mode string
+
+const (
+	ModeTMUX Mode = "tmux"
+	ModeACP  Mode = "acp"
+	ModeBoth Mode = "both"
+	ModeNone Mode = "none"
+)
+
+// MayorStatus represents the combined status of the mayor across all modes.
+type MayorStatus struct {
+	Active  bool
+	Mode    Mode
+	Tmux    *tmux.SessionInfo
+	ACPPid  int
+	Running bool // Deprecated: use Active
+}
 
 // Manager handles mayor lifecycle operations.
 type Manager struct {
 	townRoot string
+}
+
+// CombinedStatus returns the combined status of the mayor across all modes.
+func (m *Manager) CombinedStatus() (*MayorStatus, error) {
+	status := &MayorStatus{
+		Mode: ModeNone,
+	}
+
+	// Check TMUX
+	tmuxRunning, _ := m.IsRunning()
+	if tmuxRunning {
+		info, err := m.Status()
+		if err == nil {
+			status.Tmux = info
+			status.Active = true
+			status.Mode = ModeTMUX
+		}
+	}
+
+	// Check ACP
+	if IsACPActive(m.townRoot) {
+		status.Active = true
+		if status.Mode == ModeTMUX {
+			status.Mode = ModeBoth
+		} else {
+			status.Mode = ModeACP
+		}
+		pid, _ := GetACPPid(m.townRoot)
+		status.ACPPid = pid
+	}
+
+	return status, nil
+}
+
+// IsActive checks if the mayor session is active in any mode.
+func (m *Manager) IsActive() (bool, Mode) {
+	status, _ := m.CombinedStatus()
+	return status.Active, status.Mode
 }
 
 // NewManager creates a new mayor manager for a town.
@@ -49,84 +111,218 @@ func (m *Manager) mayorDir() string {
 }
 
 // Start starts the mayor session.
+// It checks both TMUX and ACP modes and returns ErrAlreadyRunning if active.
 // agentOverride optionally specifies a different agent alias to use.
 func (m *Manager) Start(agentOverride string) error {
+	status, err := m.CombinedStatus()
+	if err == nil && status.Active {
+		switch status.Mode {
+		case ModeACP, ModeBoth:
+			return ErrACPActive
+		case ModeTMUX:
+			return ErrAlreadyRunning
+		}
+	}
+	return m.StartTMUX(agentOverride)
+}
+
+// StartTMUX starts the mayor session in TMUX mode.
+// agentOverride optionally specifies a different agent alias to use.
+func (m *Manager) StartTMUX(agentOverride string) error {
+	if IsACPActive(m.townRoot) {
+		return ErrAlreadyRunning
+	}
+
 	t := tmux.NewTmux()
 	sessionID := m.SessionName()
 
-	// Check if session already exists
-	running, _ := t.HasSession(sessionID)
-	if running {
-		// Session exists - check if Claude is actually running (healthy vs zombie)
-		if t.IsCursorRunning(sessionID) {
-			return ErrAlreadyRunning
-		}
-		// Zombie - tmux alive but Claude dead. Kill and recreate.
-		if err := t.KillSession(sessionID); err != nil {
-			return fmt.Errorf("killing zombie session: %w", err)
-		}
+	// Kill any existing zombie session (tmux alive but agent dead).
+	// Returns error if session is healthy and already running.
+	_, err := session.KillExistingSession(t, sessionID, true)
+	if err != nil {
+		return ErrAlreadyRunning
 	}
 
-	// Ensure mayor directory exists
+	// Ensure mayor directory exists (for Claude settings)
 	mayorDir := m.mayorDir()
 	if err := os.MkdirAll(mayorDir, 0755); err != nil {
 		return fmt.Errorf("creating mayor directory: %w", err)
 	}
 
-	// Ensure Cursor settings exist
-	if err := cursor.EnsureSettingsForRole(mayorDir, "mayor"); err != nil {
-		return fmt.Errorf("ensuring Cursor settings: %w", err)
+	// Resolve CLAUDE_CONFIG_DIR from accounts.json so the mayor session
+	// uses the correct account. Same pattern as crew startup (start.go).
+	accountsPath := constants.MayorAccountsPath(m.townRoot)
+	claudeConfigDir, _, _ := config.ResolveAccountConfigDir(accountsPath, "")
+	if claudeConfigDir == "" {
+		claudeConfigDir = os.Getenv("CLAUDE_CONFIG_DIR")
 	}
 
-	// Create new tmux session
-	if err := t.NewSession(sessionID, mayorDir); err != nil {
-		return fmt.Errorf("creating tmux session: %w", err)
-	}
-
-	// Set environment variables (non-fatal: session works without these)
-	_ = t.SetEnvironment(sessionID, "GT_ROLE", "mayor")
-	_ = t.SetEnvironment(sessionID, "BD_ACTOR", "mayor")
-
-	// Apply Mayor theming (non-fatal: theming failure doesn't affect operation)
-	theme := tmux.MayorTheme()
-	_ = t.ConfigureGasTownSession(sessionID, theme, "", "Mayor", "coordinator")
-
-	// Launch Claude - the startup hook handles 'gt prime' automatically
-	// Export GT_ROLE and BD_ACTOR in the command since tmux SetEnvironment only affects new panes
-	startupCmd, err := config.BuildAgentStartupCommandWithAgentOverride("mayor", "mayor", "", "", agentOverride)
+	// Use unified session lifecycle for config → settings → command → create → env → theme → wait.
+	theme := tmux.ResolveSessionTheme(m.townRoot, "", "mayor", "")
+	_, err = session.StartSession(t, session.SessionConfig{
+		SessionID:        sessionID,
+		WorkDir:          mayorDir,
+		Role:             "mayor",
+		TownRoot:         m.townRoot,
+		AgentName:        "Mayor",
+		RuntimeConfigDir: claudeConfigDir,
+		Beacon: session.BeaconConfig{
+			Recipient: "mayor",
+			Sender:    "human",
+			Topic:     "cold-start",
+		},
+		AgentOverride: agentOverride,
+		Theme:         theme,
+		WaitForAgent:  true,
+		WaitFatal:     true,
+		AutoRespawn:   true,
+		AcceptBypass:  true,
+	})
 	if err != nil {
-		_ = t.KillSession(sessionID) // best-effort cleanup
-		return fmt.Errorf("building startup command: %w", err)
-	}
-	if err := t.SendKeysDelayed(sessionID, startupCmd, 200); err != nil {
-		_ = t.KillSession(sessionID) // best-effort cleanup
-		return fmt.Errorf("starting Claude agent: %w", err)
+		return err
 	}
 
-	// Wait for Claude to start (non-fatal)
-	if err := t.WaitForCommand(sessionID, constants.SupportedShells, constants.CursorStartTimeout); err != nil {
-		// Non-fatal - try to continue anyway
-	}
-
-	// Accept bypass permissions warning dialog if it appears.
-	_ = t.AcceptBypassPermissionsWarning(sessionID)
-
-	time.Sleep(constants.ShutdownNotifyDelay)
-
-	// Inject startup nudge for predecessor discovery via /resume
-	_ = session.StartupNudge(t, sessionID, session.StartupNudgeConfig{
-		Recipient: "mayor",
-		Sender:    "human",
-		Topic:     "cold-start",
-	}) // Non-fatal
-
-	// GUPP: Gas Town Universal Propulsion Principle
-	// Send the propulsion nudge to trigger autonomous coordination.
-	// Wait for beacon to be fully processed (needs to be separate prompt)
-	time.Sleep(2 * time.Second)
-	_ = t.NudgeSession(sessionID, session.PropulsionNudgeForRole("mayor", mayorDir)) // Non-fatal
+	time.Sleep(session.ShutdownDelay())
 
 	return nil
+}
+
+// StartACP starts the mayor session in ACP mode.
+// This handles the transition from TMUX to ACP mode.
+func (m *Manager) StartACP(ctx context.Context, agentOverride, rigName string) error {
+	// Check if an ACP session is already running - only one ACP session is allowed
+	// because they share the same PID file. Starting a second one would overwrite
+	// the PID file, causing the first session's proxy to detect "PID file removed"
+	// and shut down unexpectedly.
+	if IsACPActive(m.townRoot) {
+		return fmt.Errorf("ACP Mayor is already running. Only one ACP session is allowed at a time")
+	}
+
+	rc, agentName, err := config.ResolveAgentConfigWithOverride(m.townRoot, "", agentOverride)
+	if err != nil {
+		return fmt.Errorf("resolving agent config: %w", err)
+	}
+
+	if !config.RuntimeConfigSupportsACP(rc) {
+		return fmt.Errorf("agent '%s' does not support ACP. Use an ACP-compatible agent like 'opencode'.", agentName)
+	}
+
+	// Prepare environment
+	envVars := config.AgentEnv(config.AgentEnvConfig{
+		Role:     "mayor",
+		Rig:      rigName,
+		TownRoot: m.townRoot,
+	})
+	for k, v := range envVars {
+		os.Setenv(k, v)
+	}
+	os.Setenv("GT_TOWN_ROOT", m.townRoot)
+
+	// Apply agent-specific environment variables from RuntimeConfig
+	// This ensures variables like ANTHROPIC_API_KEY reach the agent process
+	if rc.Env != nil {
+		for k, v := range rc.Env {
+			os.Setenv(k, v)
+		}
+	}
+
+	mayorDir := m.mayorDir()
+	if err := os.Chdir(mayorDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not cd to mayor directory: %v\n", err)
+	}
+
+	// Initialize ACP components
+	proxy := acp.NewProxy()
+
+	startupPrompt, err := m.buildACPStartupPrompt()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not render mayor prime context for ACP startup: %v\n", err)
+	}
+	proxy.SetStartupPrompt(startupPrompt)
+	proxy.SetPIDFilePath(ACPPidFilePath(m.townRoot))
+	proxy.SetTownRoot(m.townRoot)
+
+	propeller := acp.NewPropeller(proxy, m.townRoot, m.SessionName())
+
+	// Transition Point: Stop TMUX mayor if running, but only after ACP setup is ready.
+	if running, _ := m.IsRunning(); running {
+		fmt.Fprintf(os.Stderr, "Stopping tmux mayor to switch to ACP mode...\n")
+		if err := m.Stop(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not stop tmux mayor: %v\n", err)
+		}
+	}
+
+	// Write ACP PID and agent name after successful transition/stop
+	if err := WriteACPPid(m.townRoot); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not write ACP PID file: %v\n", err)
+	}
+	if err := WriteACPAgent(m.townRoot, agentName); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not write ACP agent file: %v\n", err)
+	}
+	defer func() {
+		if err := RemoveACPPid(m.townRoot); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not remove ACP PID file: %v\n", err)
+		}
+		if err := RemoveACPAgent(m.townRoot); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not remove ACP agent file: %v\n", err)
+		}
+	}()
+
+	acpConfig := config.GetACPConfigFromRuntime(rc)
+	var agentArgs []string
+	if acpConfig != nil {
+		// ACP mode: build args from ACP config
+		// Handle different ACP invocation modes:
+		//
+		// 1. Native mode: Binary is already an ACP adapter (e.g., "claude-agent-acp")
+		//    Config: { "mode": "native" } or { "mode": "native", "args": [...] }
+		//    Result: claude-agent-acp [args...]
+		//
+		// 2. Subcommand mode: Agent has ACP as a subcommand (e.g., "opencode acp")
+		//    Config: { "command": "acp", "args": ["--debug"] }
+		//    Result: opencode acp --debug
+		//
+		// 3. Flag mode: Agent uses a flag to enable ACP (e.g., "gemini --experimental-acp")
+		//    Config: { "args": ["--experimental-acp"] }
+		//    Result: gemini --experimental-acp
+		switch acpConfig.Mode {
+		case config.ACPModeNative:
+			// Native mode: the binary IS the ACP adapter
+			// Just pass any additional args
+			if len(acpConfig.Args) > 0 {
+				agentArgs = append(agentArgs, acpConfig.Args...)
+			}
+		default:
+			// Default (subcommand/flag) mode:
+			// - If Command is set, it's a subcommand (prepend to args)
+			// - If only Args is set, it's flag mode (use args directly)
+			if acpConfig.Command != "" {
+				agentArgs = []string{acpConfig.Command}
+			}
+			if len(acpConfig.Args) > 0 {
+				agentArgs = append(agentArgs, acpConfig.Args...)
+			}
+		}
+	}
+
+	// Use rc.Command instead of agentName (alias) to ensure we run the correct binary.
+	// If agentArgs is empty (no ACP config), we fall back to rc.Args for regular mode.
+	execCmd := rc.Command
+	if len(agentArgs) == 0 {
+		agentArgs = rc.Args
+	}
+
+	if err := proxy.Start(ctx, execCmd, agentArgs, mayorDir); err != nil {
+		return fmt.Errorf("starting agent: %w", err)
+	}
+
+	// Start background polling only after the agent process has successfully started.
+	// The Propeller will wait for the ACP handshake to establish a SessionID
+	// and verify the agent is not busy before attempting any prompt injections.
+	propeller.Start(ctx)
+	defer propeller.Stop()
+
+	return proxy.Forward()
 }
 
 // Stop stops the mayor session.
@@ -147,15 +343,15 @@ func (m *Manager) Stop() error {
 	_ = t.SendKeysRaw(sessionID, "C-c")
 	time.Sleep(100 * time.Millisecond)
 
-	// Kill the session
-	if err := t.KillSession(sessionID); err != nil {
+	// Kill the session and all its processes
+	if err := t.KillSessionWithProcesses(sessionID); err != nil {
 		return fmt.Errorf("killing session: %w", err)
 	}
 
 	return nil
 }
 
-// IsRunning checks if the mayor session is active.
+// IsRunning checks if the mayor session is active in TMUX mode.
 func (m *Manager) IsRunning() (bool, error) {
 	t := tmux.NewTmux()
 	return t.HasSession(m.SessionName())
@@ -175,4 +371,59 @@ func (m *Manager) Status() (*tmux.SessionInfo, error) {
 	}
 
 	return t.GetSessionInfo(sessionID)
+}
+
+// buildACPStartupPrompt composes the startup prompt used for ACP mayor sessions.
+// It always includes the startup beacon and appends rendered mayor prime context
+// when available.
+func (m *Manager) buildACPStartupPrompt() (string, error) {
+	beacon := session.FormatStartupBeacon(session.BeaconConfig{
+		Recipient: "mayor",
+		Sender:    "human",
+		Topic:     "acp",
+	})
+
+	prime, err := GetMayorPrime(m.townRoot)
+	if err != nil {
+		return beacon, err
+	}
+	if strings.TrimSpace(prime) == "" {
+		return beacon, nil
+	}
+
+	return beacon + "\n\n" + prime, nil
+}
+
+// GetMayorPrime returns the rendered mayor prime context as a raw string.
+// This includes the formula from templates and a timestamp, suitable for
+// ACP initialize responses where the full context needs to be provided
+// as a single string payload.
+func GetMayorPrime(townRoot string) (string, error) {
+	tmpl, err := templates.New()
+	if err != nil {
+		return "", fmt.Errorf("loading templates: %w", err)
+	}
+
+	townName, err := workspace.GetTownName(townRoot)
+	if err != nil {
+		townName = "unknown"
+	}
+
+	data := templates.RoleData{
+		Role:          "mayor",
+		TownRoot:      townRoot,
+		TownName:      townName,
+		WorkDir:       townRoot,
+		MayorSession:  session.MayorSessionName(),
+		DeaconSession: session.DeaconSessionName(),
+	}
+
+	content, err := tmpl.RenderRole("mayor", data)
+	if err != nil {
+		return "", fmt.Errorf("rendering mayor template: %w", err)
+	}
+
+	// Append timestamp
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	return fmt.Sprintf("[prime-rendered-at: %s]\n\n%s", timestamp, content), nil
 }

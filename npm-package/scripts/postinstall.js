@@ -61,11 +61,20 @@ function downloadFile(url, dest) {
       if (response.statusCode === 301 || response.statusCode === 302) {
         const redirectUrl = response.headers.location;
         console.log(`Following redirect to: ${redirectUrl}`);
-        downloadFile(redirectUrl, dest).then(resolve).catch(reject);
+        // Consume the response so the socket can be freed
+        response.resume();
+        // Close the current write stream before recursing,
+        // otherwise the file stays locked on Windows.
+        file.close(() => {
+          fs.unlink(dest, () => {
+            downloadFile(redirectUrl, dest).then(resolve).catch(reject);
+          });
+        });
         return;
       }
 
       if (response.statusCode !== 200) {
+        file.close(() => fs.unlink(dest, () => { }));
         reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
         return;
       }
@@ -73,8 +82,6 @@ function downloadFile(url, dest) {
       response.pipe(file);
 
       file.on('finish', () => {
-        // Wait for file.close() to complete before resolving
-        // This is critical on Windows where the file may still be locked
         file.close((err) => {
           if (err) reject(err);
           else resolve();
@@ -83,12 +90,12 @@ function downloadFile(url, dest) {
     });
 
     request.on('error', (err) => {
-      fs.unlink(dest, () => {});
+      file.close(() => fs.unlink(dest, () => { }));
       reject(err);
     });
 
     file.on('error', (err) => {
-      fs.unlink(dest, () => {});
+      fs.unlink(dest, () => { });
       reject(err);
     });
   });
@@ -153,11 +160,11 @@ async function install() {
     console.log(`Installing gt v${VERSION} for ${platformName}-${archName}...`);
 
     // Construct download URL
-    // Format: https://github.com/cursorworkshop/cursor-gastown/releases/download/v0.1.0/cursor-gastown_0.1.0_darwin_amd64.tar.gz
+    // Format: https://github.com/harness-institute/cursor-gastown/releases/download/v0.1.0/gastown_0.1.0_darwin_amd64.tar.gz
     const releaseVersion = VERSION;
     const archiveExt = platformName === 'windows' ? 'zip' : 'tar.gz';
-    const archiveName = `cursor-gastown_${releaseVersion}_${platformName}_${archName}.${archiveExt}`;
-    const downloadUrl = `https://github.com/cursorworkshop/cursor-gastown/releases/download/v${releaseVersion}/${archiveName}`;
+    const archiveName = `gastown_${releaseVersion}_${platformName}_${archName}.${archiveExt}`;
+    const downloadUrl = `https://github.com/harness-institute/cursor-gastown/releases/download/v${releaseVersion}/${archiveName}`;
 
     // Determine destination paths
     const binDir = path.join(__dirname, '..', 'bin');
@@ -195,8 +202,8 @@ async function install() {
     console.error(`Error installing gt: ${err.message}`);
     console.error('');
     console.error('Installation failed. You can try:');
-    console.error('1. Installing manually from: https://github.com/cursorworkshop/cursor-gastown/releases');
-    console.error('2. Opening an issue: https://github.com/cursorworkshop/cursor-gastown/issues');
+    console.error('1. Installing manually from: https://github.com/harness-institute/cursor-gastown/releases');
+    console.error('2. Opening an issue: https://github.com/harness-institute/cursor-gastown/issues');
     process.exit(1);
   }
 }

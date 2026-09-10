@@ -3,13 +3,13 @@
 #
 # Usage:
 #   # Create a fresh Debian/Ubuntu VM on GCE, then:
-#   curl -fsSL https://raw.githubusercontent.com/cursorworkshop/cursor-gastown/main/scripts/test-gce-install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/steveyegge/gastown/main/scripts/test-gce-install.sh | bash
 #
 #   # Or clone and run locally:
 #   ./scripts/test-gce-install.sh
 #
 # This script:
-#   1. Installs all prerequisites (Go, git, tmux, beads, Cursor CLI)
+#   1. Installs all prerequisites (Go, git, tmux, beads, Claude Code)
 #   2. Installs Gas Town
 #   3. Runs verification tests
 #   4. Reports success/failure
@@ -25,7 +25,7 @@ NC='\033[0m' # No Color
 log() { echo -e "${GREEN}[+]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 fail() { echo -e "${RED}[X]${NC} $1"; exit 1; }
-check() { echo -e "${GREEN}[[OK]]${NC} $1"; }
+check() { echo -e "${GREEN}[✓]${NC} $1"; }
 
 echo "================================================"
 echo "  Gas Town GCE Installation Test"
@@ -103,7 +103,7 @@ fi
 # ============================================
 log "Installing Gas Town (gt)..."
 
-go install github.com/cursorworkshop/cursor-gastown/cmd/gt@latest
+go install github.com/harness-institute/cursor-gastown/cmd/gt@latest
 
 if command -v gt &> /dev/null; then
     check "gt installed: $(gt --version 2>/dev/null || echo 'version unknown')"
@@ -119,7 +119,7 @@ log "Creating test workspace at $TEST_DIR..."
 
 gt install "$TEST_DIR" --name test-town
 
-if [[ -d "$TEST_DIR" && -f "$TEST_DIR/mayor/town.json" ]]; then
+if [[ -d "$TEST_DIR" && -f "$TEST_DIR/CLAUDE.md" ]]; then
     check "Workspace created successfully"
 else
     fail "Workspace creation failed"
@@ -187,15 +187,15 @@ else
 fi
 
 # ============================================
-# STEP 7: Cursor CLI Check
+# STEP 7: Claude Code CLI Check
 # ============================================
-log "Checking Cursor CLI..."
+log "Checking Claude Code CLI..."
 
-if command -v cursor-agent &> /dev/null; then
-    check "Cursor CLI found: $(cursor-agent --version 2>/dev/null || echo 'installed')"
+if command -v claude &> /dev/null; then
+    check "Claude Code CLI found: $(claude --version 2>/dev/null || echo 'installed')"
 else
-    warn "Cursor CLI not installed"
-    echo "  Install from: https://cursor.com"
+    warn "Claude Code CLI not installed"
+    echo "  Install from: https://claude.ai/code"
     echo "  Gas Town works without it, but agents won't spawn"
 fi
 
@@ -220,10 +220,10 @@ echo "  - Git: $(git --version | grep -oP '[0-9]+\.[0-9]+\.[0-9]+')"
 echo "  - tmux: $(tmux -V | grep -oP '[0-9]+\.[0-9]+')"
 echo "  - beads: $(bd --version 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' || echo 'installed')"
 echo "  - gt: installed"
-if command -v cursor-agent &> /dev/null; then
-    echo "  - Cursor CLI: installed"
+if command -v claude &> /dev/null; then
+    echo "  - Claude Code: installed"
 else
-    echo "  - Cursor CLI: NOT INSTALLED (optional for basic usage)"
+    echo "  - Claude Code: NOT INSTALLED (optional for basic usage)"
 fi
 echo
 echo "Gas Town is ready to use!"

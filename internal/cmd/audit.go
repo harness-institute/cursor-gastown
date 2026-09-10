@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
-	"github.com/cursorworkshop/cursor-gastown/internal/events"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/townlog"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/events"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/townlog"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // Audit command flags
@@ -212,7 +212,7 @@ func collectGitCommits(townRoot, actor string, since time.Time) ([]AuditEntry, e
 			Type:      "commit",
 			Actor:     author,
 			Summary:   subject,
-			ID:        hash[:8],
+			ID:        shortHash(hash),
 		})
 	}
 
@@ -380,6 +380,8 @@ func formatTownlogSummary(e townlog.Event) string {
 		return "Completed work"
 	case townlog.EventHandoff:
 		return "Handed off session"
+	case townlog.EventHandoffNoPersist:
+		return "Handoff FAILED (Dolt persistence)"
 	case townlog.EventCrash:
 		if e.Context != "" {
 			return fmt.Sprintf("Crashed: %s", e.Context)

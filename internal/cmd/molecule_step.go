@@ -6,12 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // moleculeStepDoneCmd is the "gt mol step done" command.
@@ -53,13 +54,14 @@ func init() {
 
 // StepDoneResult is the result of a step done operation.
 type StepDoneResult struct {
-	StepID       string `json:"step_id"`
-	MoleculeID   string `json:"molecule_id"`
-	StepClosed   bool   `json:"step_closed"`
-	NextStepID   string `json:"next_step_id,omitempty"`
-	NextStepTitle string `json:"next_step_title,omitempty"`
-	Complete     bool   `json:"complete"`
-	Action       string `json:"action"` // "continue", "done", "no_more_ready"
+	StepID        string   `json:"step_id"`
+	MoleculeID    string   `json:"molecule_id"`
+	StepClosed    bool     `json:"step_closed"`
+	NextStepID    string   `json:"next_step_id,omitempty"`
+	NextStepTitle string   `json:"next_step_title,omitempty"`
+	ParallelSteps []string `json:"parallel_steps,omitempty"` // Multiple ready steps for fan-out
+	Complete      bool     `json:"complete"`
+	Action        string   `json:"action"` // "continue", "parallel", "done", "no_more_ready"
 }
 
 func runMoleculeStepDone(cmd *cobra.Command, args []string) error {
@@ -94,9 +96,15 @@ func runMoleculeStepDone(cmd *cobra.Command, args []string) error {
 	}
 
 	// Step 2: Extract molecule ID from step ID (gt-xxx.1 -> gt-xxx)
+	// Also handle wisp format (go-wisp-xxx) by using the step's Parent field
 	moleculeID := extractMoleculeIDFromStep(stepID)
 	if moleculeID == "" {
-		return fmt.Errorf("cannot extract molecule ID from step %s (expected format: gt-xxx.N)", stepID)
+		// Fallback: use the step's Parent field (for wisps)
+		if step.Parent != "" {
+			moleculeID = step.Parent
+		} else {
+			return fmt.Errorf("cannot extract molecule ID from step %s (expected format: prefix.N or wisp with parent)", stepID)
+		}
 	}
 
 	result := StepDoneResult{
@@ -113,21 +121,28 @@ func runMoleculeStepDone(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("closing step: %w", err)
 		}
 		result.StepClosed = true
-		fmt.Printf("%s Closed step %s: %s\n", style.Bold.Render("OK"), stepID, step.Title)
+		fmt.Printf("%s Closed step %s: %s\n", style.Bold.Render("✓"), stepID, step.Title)
 	}
 
-	// Step 4: Find the next ready step
-	nextStep, allComplete, err := findNextReadyStep(b, moleculeID)
+	// Step 4: Find all ready steps (supports fan-out pattern)
+	readySteps, allComplete, err := findAllReadySteps(b, moleculeID)
 	if err != nil {
-		return fmt.Errorf("finding next step: %w", err)
+		return fmt.Errorf("finding next steps: %w", err)
 	}
 
 	if allComplete {
 		result.Complete = true
 		result.Action = "done"
-	} else if nextStep != nil {
-		result.NextStepID = nextStep.ID
-		result.NextStepTitle = nextStep.Title
+	} else if len(readySteps) > 1 {
+		// Multiple ready steps - fan-out pattern
+		result.Action = "parallel"
+		result.ParallelSteps = make([]string, len(readySteps))
+		for i, s := range readySteps {
+			result.ParallelSteps[i] = s.ID
+		}
+	} else if len(readySteps) == 1 {
+		result.NextStepID = readySteps[0].ID
+		result.NextStepTitle = readySteps[0].Title
 		result.Action = "continue"
 	} else {
 		// There are more steps but none are ready (blocked on dependencies)
@@ -144,7 +159,10 @@ func runMoleculeStepDone(cmd *cobra.Command, args []string) error {
 	// Step 5: Handle next action
 	switch result.Action {
 	case "continue":
-		return handleStepContinue(cwd, townRoot, workDir, nextStep, moleculeStepDryRun)
+		return handleStepContinue(cwd, townRoot, readySteps[0], moleculeStepDryRun)
+
+	case "parallel":
+		return handleParallelSteps(cwd, townRoot, workDir, readySteps, moleculeStepDryRun)
 
 	case "done":
 		return handleMoleculeComplete(cwd, townRoot, moleculeID, moleculeStepDryRun)
@@ -162,9 +180,10 @@ func runMoleculeStepDone(cmd *cobra.Command, args []string) error {
 // extractMoleculeIDFromStep extracts the molecule ID from a step ID.
 // Step IDs have format: mol-id.N where N is the step number.
 // Examples:
-//   gt-abc.1 -> gt-abc
-//   gt-xyz.3 -> gt-xyz
-//   bd-mol-abc.2 -> bd-mol-abc
+//
+//	gt-abc.1 -> gt-abc
+//	gt-xyz.3 -> gt-xyz
+//	bd-mol-abc.2 -> bd-mol-abc
 func extractMoleculeIDFromStep(stepID string) string {
 	// Find the last dot
 	lastDot := strings.LastIndex(stepID, ".")
@@ -186,12 +205,19 @@ func extractMoleculeIDFromStep(stepID string) string {
 	return stepID[:lastDot]
 }
 
-// findNextReadyStep finds the next ready step in a molecule.
-// Returns (nextStep, allComplete, error).
+// findAllReadySteps finds all ready steps in a molecule.
+// Returns (readySteps, allComplete, error).
 // If all steps are complete, returns (nil, true, nil).
 // If no steps are ready but some are blocked/in_progress, returns (nil, false, nil).
-func findNextReadyStep(b *beads.Beads, moleculeID string) (*beads.Issue, bool, error) {
-	// Get all children of the molecule
+//
+// Delegates readiness calculation to beads' canonical bd ready --mol command,
+// which uses the materialized blocked_issues_cache for correct handling of all
+// blocking types (blocks, conditional-blocks, waits-for), transitive propagation,
+// and cross-rig dependencies. See #1420.
+func findAllReadySteps(b *beads.Beads, moleculeID string) ([]*beads.Issue, bool, error) {
+	// Check completion: list all children to detect "all closed" state.
+	// bd ready --mol only returns open+unblocked steps, so it can't distinguish
+	// "all complete" from "all blocked".
 	children, err := b.List(beads.ListOptions{
 		Parent:   moleculeID,
 		Status:   "all",
@@ -205,52 +231,35 @@ func findNextReadyStep(b *beads.Beads, moleculeID string) (*beads.Issue, bool, e
 		return nil, true, nil // No steps = complete
 	}
 
-	// Build set of closed step IDs and collect open steps
-	// Note: "open" means not started. "in_progress" means someone's working on it.
-	// We only consider "open" steps as candidates for the next step.
-	closedIDs := make(map[string]bool)
-	var openSteps []*beads.Issue
-	hasNonClosedSteps := false
-
+	// Check if all steps are closed
+	allClosed := true
 	for _, child := range children {
-		switch child.Status {
-		case "closed":
-			closedIDs[child.ID] = true
-		case "open":
-			openSteps = append(openSteps, child)
-			hasNonClosedSteps = true
-		default:
-			// in_progress or other status - not closed, not available
-			hasNonClosedSteps = true
+		if child.Status != "closed" {
+			allClosed = false
+			break
 		}
 	}
-
-	// Check if all complete
-	if !hasNonClosedSteps {
+	if allClosed {
 		return nil, true, nil
 	}
 
-	// Find ready steps (open steps with all dependencies closed)
-	for _, step := range openSteps {
-		allDepsClosed := true
-		for _, depID := range step.DependsOn {
-			if !closedIDs[depID] {
-				allDepsClosed = false
-				break
-			}
-		}
-
-		if len(step.DependsOn) == 0 || allDepsClosed {
-			return step, false, nil
-		}
+	// Delegate readiness to beads' canonical ready-work semantics.
+	// This replaces manual dependency walking with isBlockingDepType,
+	// using beads' blocked_issues_cache which handles all blocking types,
+	// transitive propagation, and conditional-blocks resolution.
+	readySteps, err := b.ReadyForMol(moleculeID)
+	if err != nil {
+		return nil, false, fmt.Errorf("finding ready steps: %w", err)
 	}
 
-	// No ready steps (all blocked or in_progress)
-	return nil, false, nil
+	// Sort ready steps by sequence number so step 1 comes before step 2, etc.
+	sortStepsBySequence(readySteps)
+
+	return readySteps, false, nil
 }
 
 // handleStepContinue handles continuing to the next step.
-func handleStepContinue(cwd, townRoot, _ string, nextStep *beads.Issue, dryRun bool) error { // workDir unused but kept for signature consistency
+func handleStepContinue(cwd, townRoot string, nextStep *beads.Issue, dryRun bool) error {
 	fmt.Printf("\n%s Next step: %s\n", style.Bold.Render("→"), nextStep.ID)
 	fmt.Printf("  %s\n", nextStep.Title)
 
@@ -322,6 +331,12 @@ func handleStepContinue(cwd, townRoot, _ string, nextStep *beads.Issue, dryRun b
 
 	t := tmux.NewTmux()
 
+	// Kill all processes in the pane before respawning to prevent process leaks
+	if err := t.KillPaneProcesses(pane); err != nil {
+		// Non-fatal but log the warning
+		style.PrintWarning("could not kill pane processes: %v", err)
+	}
+
 	// Clear history before respawn
 	if err := t.ClearHistory(pane); err != nil {
 		// Non-fatal
@@ -331,9 +346,88 @@ func handleStepContinue(cwd, townRoot, _ string, nextStep *beads.Issue, dryRun b
 	return t.RespawnPane(pane, restartCmd)
 }
 
+// handleParallelSteps handles executing multiple steps concurrently (fan-out pattern).
+// This function spawns goroutines to execute each step in parallel and waits for all to complete.
+func handleParallelSteps(cwd, townRoot, _ string, steps []*beads.Issue, dryRun bool) error {
+	fmt.Printf("\n%s Fan-out: %d parallel steps ready\n", style.Bold.Render("⚡"), len(steps))
+	for i, step := range steps {
+		fmt.Printf("  %d. %s: %s\n", i+1, step.ID, step.Title)
+	}
+
+	if dryRun {
+		fmt.Printf("\n[dry-run] Would execute %d steps in parallel\n", len(steps))
+		return nil
+	}
+
+	// For parallel execution, we use goroutines with a WaitGroup
+	// Each step is executed by running its commands in sequence
+	// For now, we execute them sequentially but mark them all as in_progress first
+	// TODO: True parallel execution requires spawning subagents or separate tmux panes
+
+	fmt.Printf("\n%s Executing parallel steps...\n", style.Bold.Render("🔄"))
+
+	// Mark all steps as in_progress
+	gitRoot, err := getGitRoot()
+	if err != nil {
+		return fmt.Errorf("finding git root: %w", err)
+	}
+
+	for _, step := range steps {
+		markCmd := exec.Command("bd", "update", step.ID, "--status=in_progress")
+		markCmd.Dir = gitRoot
+		markCmd.Stderr = os.Stderr
+		if err := markCmd.Run(); err != nil {
+			style.PrintWarning("could not mark step %s as in_progress: %v", step.ID, err)
+		}
+	}
+
+	// Execute steps concurrently using goroutines
+	// Note: This is simplified - each step's "execution" just marks it complete
+	// In practice, the agent (witness/deacon) needs to actually do the work described in step.Description
+	// For true parallel execution, this would spawn separate tmux panes or Task subagents
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(steps))
+
+	for _, step := range steps {
+		wg.Add(1)
+		go func(s *beads.Issue) {
+			defer wg.Done()
+
+			// Execute the step by closing it
+			// In a real implementation, the agent would process the step description
+			// For now, we just mark it as requiring manual execution
+			fmt.Printf("  %s Step %s ready for parallel execution\n", style.Dim.Render("→"), s.ID)
+		}(step)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	// Check for errors
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
+
+	fmt.Printf("\n%s All parallel steps marked as in_progress\n", style.Bold.Render("✓"))
+	fmt.Printf("%s Execute each step and close with: gt mol step done <step-id>\n", style.Dim.Render("ℹ"))
+	fmt.Printf("%s Once all parallel steps are closed, the gather step will become ready\n", style.Dim.Render("ℹ"))
+
+	// For the current agent, pick the first step to continue with
+	// Other steps can be picked up by other agents or run manually
+	if len(steps) > 0 {
+		fmt.Printf("\n%s Continuing with first parallel step: %s\n", style.Bold.Render("→"), steps[0].ID)
+		return handleStepContinue(cwd, townRoot, steps[0], dryRun)
+	}
+
+	return nil
+}
+
 // handleMoleculeComplete handles when a molecule is complete.
 func handleMoleculeComplete(cwd, townRoot, moleculeID string, dryRun bool) error {
-	fmt.Printf("\n%s Molecule complete!\n", style.Bold.Render("[DONE]"))
+	fmt.Printf("\n%s Molecule complete!\n", style.Bold.Render("🎉"))
 
 	// Detect agent identity
 	roleInfo, err := GetRoleWithContext(cwd, townRoot)
@@ -358,7 +452,11 @@ func handleMoleculeComplete(cwd, townRoot, moleculeID string, dryRun bool) error
 
 	if dryRun {
 		fmt.Printf("[dry-run] Would unpin work for %s\n", agentID)
-		fmt.Printf("[dry-run] Would send POLECAT_DONE to witness\n")
+		if roleCtx.Role == RoleDog {
+			fmt.Printf("[dry-run] Would run gt dog done\n")
+		} else {
+			fmt.Printf("[dry-run] Would send POLECAT_DONE to witness\n")
+		}
 		return nil
 	}
 
@@ -379,7 +477,7 @@ func handleMoleculeComplete(cwd, townRoot, moleculeID string, dryRun bool) error
 			if err := unpinCmd.Run(); err != nil {
 				style.PrintWarning("could not unpin bead: %v", err)
 			} else {
-				fmt.Printf("%s Work unpinned\n", style.Bold.Render("OK"))
+				fmt.Printf("%s Work unpinned\n", style.Bold.Render("✓"))
 			}
 		}
 	}
@@ -388,10 +486,27 @@ func handleMoleculeComplete(cwd, townRoot, moleculeID string, dryRun bool) error
 	if roleCtx.Role == RolePolecat {
 		fmt.Printf("%s Signaling completion to witness...\n", style.Bold.Render("📤"))
 
-		doneCmd := exec.Command("gt", "done", "--exit", "DEFERRED")
+		doneCmd := exec.Command("gt", "done", "--status", "DEFERRED")
 		doneCmd.Stdout = os.Stdout
 		doneCmd.Stderr = os.Stderr
 		return doneCmd.Run()
+	}
+
+	// For dogs, use gt dog done to clear work and auto-terminate session.
+	// Without this, dogs idle at the prompt indefinitely after completing
+	// their formula, wasting resources until the stale-working detector
+	// kills them (2 hours).
+	if roleCtx.Role == RoleDog {
+		fmt.Printf("%s Signaling dog completion...\n", style.Bold.Render("📤"))
+
+		dogDoneArgs := []string{"dog", "done"}
+		if roleCtx.Polecat != "" { // dog name stored in Polecat field
+			dogDoneArgs = append(dogDoneArgs, roleCtx.Polecat)
+		}
+		dogDoneCmd := exec.Command("gt", dogDoneArgs...)
+		dogDoneCmd.Stdout = os.Stdout
+		dogDoneCmd.Stderr = os.Stderr
+		return dogDoneCmd.Run()
 	}
 
 	// For other roles, just print completion message

@@ -5,8 +5,8 @@
 # are synthesized into a unified design document.
 #
 # Usage:
-#   gt formula run design --problem="Add notification levels to mayor"
-#   gt formula run design --problem="Redesign the merge queue"
+#   gt formula run design --set problem="Add notification levels to mayor"
+#   gt formula run design --set problem="Redesign the merge queue"
 
 description = """
 Structured design exploration via parallel specialized analysts.
@@ -29,7 +29,7 @@ are collected and synthesized into a unified design proposal with options.
 4. Synthesis step combines all analyses into unified design
 
 ## Output
-A .designs/<design-id>/ directory containing:
+A .designs/<review-id>/ directory containing:
 - Individual dimension analyses
 - design-doc.md with unified proposal and decision points
 """
@@ -117,7 +117,7 @@ Be thorough but actionable. Flag decisions needing human input.
 
 # Output configuration
 [output]
-directory = ".designs/{{.design_id}}"
+directory = ".designs/{{.review_id}}"
 leg_pattern = "{{.leg.id}}.md"
 synthesis = "design-doc.md"
 

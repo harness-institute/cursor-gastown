@@ -1,0 +1,152 @@
+{
+  "skipDangerousModePermissionPrompt": true,
+  "hasCompletedOnboarding": true,
+  "theme": "dark",
+  "editorMode": "normal",
+  "feedbackSurveyRate": 0,
+  "awaySummaryEnabled": false,
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "enabledPlugins": {
+    "beads@beads-marketplace": false
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(gh pr create*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} tap guard pr-workflow"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(git checkout -b*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} tap guard pr-workflow"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(git switch -c*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} tap guard pr-workflow"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(sudo *)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} tap guard dangerous-command"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(apt install*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} tap guard dangerous-command"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(apt-get install*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} tap guard dangerous-command"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(dnf install*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} tap guard dangerous-command"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(yum install*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} tap guard dangerous-command"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(pacman -S*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} tap guard dangerous-command"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(brew install*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} tap guard dangerous-command"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} prime --hook"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} prime --hook"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "case \"${GT_ROLE:-}\" in *witness*|*refinery*|deacon*|*boot*) exit 0 ;; *) {{GT_BIN}} mail check --inject ;; esac"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{GT_BIN}} costs record &"
+          }
+        ]
+      }
+    ]
+  }
+}

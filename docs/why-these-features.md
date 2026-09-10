@@ -70,12 +70,14 @@ bd stats --actor=gastown/polecats/toast --tag=go
 - **Capability matching:** Route work to proven agents
 - **Continuous improvement:** Identify underperforming agents for tuning
 
-This is particularly valuable when **A/B testing models** (e.g., model A vs GPT).
+This is particularly valuable when **A/B testing models**. Deploy Claude vs GPT
 on similar tasks, track their completion rates and quality, make informed decisions.
 
 ---
 
 ## Feature: Capability-Based Routing
+
+> **Status: Planned** — Skill tracking and automatic routing are not yet implemented. Work assignment is currently manual via `gt sling`.
 
 **The problem:** You have work in Go, Python, TypeScript, Rust. You have agents
 with varying capabilities. Manual assignment doesn't scale.
@@ -150,6 +152,8 @@ depends_on:
 
 ## Feature: Federation
 
+> **Status: Planned** — Federation via the Highway Operations Protocol (HOP) is designed but not yet implemented. Gas Town currently operates as a single-town system.
+
 **The problem:** Enterprise projects span multiple repositories, multiple teams,
 sometimes multiple organizations (contractors, partners). Visibility is fragmented.
 
@@ -209,9 +213,9 @@ bd activity --follow
 
 [14:32:08] + patrol-x7k.arm-ace bonded (5 steps)
 [14:32:09] → patrol-x7k.arm-ace.capture in_progress
-[14:32:10] [OK] patrol-x7k.arm-ace.capture completed
-[14:32:14] [OK] patrol-x7k.arm-ace.decide completed
-[14:32:17] [OK] patrol-x7k.arm-ace COMPLETE
+[14:32:10] ✓ patrol-x7k.arm-ace.capture completed
+[14:32:14] ✓ patrol-x7k.arm-ace.decide completed
+[14:32:17] ✓ patrol-x7k.arm-ace COMPLETE
 ```
 
 **Why it matters:**

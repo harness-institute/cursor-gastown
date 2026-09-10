@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/boot"
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/events"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
 )
 
 // TownSession represents a town-level tmux session.
@@ -21,7 +22,7 @@ type TownSession struct {
 func TownSessions() []TownSession {
 	return []TownSession{
 		{"Mayor", MayorSessionName()},
-		{"Boot", boot.SessionName},
+		{"Boot", BootSessionName()},
 		{"Deacon", DeaconSessionName()},
 	}
 }
@@ -38,16 +39,56 @@ func StopTownSession(t *tmux.Tmux, ts TownSession, force bool) (bool, error) {
 		return false, nil
 	}
 
+	return stopTownSessionInternal(t, ts, force)
+}
+
+// StopTownSessionWithCache is like StopTownSession but uses a pre-fetched
+// SessionSet for O(1) existence check instead of spawning a subprocess.
+func StopTownSessionWithCache(t *tmux.Tmux, ts TownSession, force bool, cache *tmux.SessionSet) (bool, error) {
+	if !cache.Has(ts.SessionID) {
+		return false, nil
+	}
+
+	return stopTownSessionInternal(t, ts, force)
+}
+
+// stopTownSessionInternal performs the actual session stop.
+func stopTownSessionInternal(t *tmux.Tmux, ts TownSession, force bool) (bool, error) {
 	// Try graceful shutdown first (unless forced)
 	if !force {
 		_ = t.SendKeysRaw(ts.SessionID, "C-c")
-		time.Sleep(100 * time.Millisecond)
+		WaitForSessionExit(t, ts.SessionID, constants.GracefulShutdownTimeout)
 	}
 
-	// Kill the session
-	if err := t.KillSession(ts.SessionID); err != nil {
+	// Log pre-death event for crash investigation (before killing)
+	reason := "user shutdown"
+	if force {
+		reason = "forced shutdown"
+	}
+	_ = events.LogFeed(events.TypeSessionDeath, ts.SessionID,
+		events.SessionDeathPayload(ts.SessionID, ts.Name, reason, "gt down"))
+
+	// Kill the session.
+	// Use KillSessionWithProcesses to ensure all descendant processes are killed.
+	if err := t.KillSessionWithProcesses(ts.SessionID); err != nil {
 		return false, fmt.Errorf("killing %s session: %w", ts.Name, err)
 	}
 
 	return true, nil
+}
+
+// WaitForSessionExit polls for a session's process to exit within the given timeout.
+// Returns true if the process exited on its own, false if the timeout was reached.
+// This allows graceful shutdown (e.g., after Ctrl-C) to actually complete before
+// falling through to forceful termination.
+func WaitForSessionExit(t *tmux.Tmux, sessionID string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		running, err := t.HasSession(sessionID)
+		if err != nil || !running {
+			return true
+		}
+		time.Sleep(constants.PollInterval)
+	}
+	return false
 }

@@ -38,7 +38,8 @@ var (
 )
 
 // renderView renders the entire view.
-func (m Model) renderView() string {
+// Caller must hold m.mu.
+func (m *Model) renderView() string {
 	var b strings.Builder
 
 	// Title
@@ -100,7 +101,7 @@ func (m Model) renderView() string {
 				issueIcon := "○"
 				style := issueOpenStyle
 				if issue.Status == "closed" {
-					issueIcon = "[OK]"
+					issueIcon = "✓"
 					style = issueClosedStyle
 				}
 
@@ -137,13 +138,13 @@ func (m Model) renderView() string {
 func statusToIcon(status string) string {
 	switch status {
 	case "open":
-		return "[>]"
+		return "🚚"
 	case "closed":
-		return "[OK]"
+		return "✓"
 	case "in_progress":
-		return "[..]"
+		return "→"
 	default:
-		return "[?]"
+		return "●"
 	}
 }
 

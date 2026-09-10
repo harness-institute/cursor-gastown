@@ -1,15 +1,11 @@
 package doctor
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
-
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
 )
 
 // WispGCCheck detects and cleans orphaned wisps that are older than a threshold.
@@ -28,6 +24,7 @@ func NewWispGCCheck() *WispGCCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "wisp-gc",
 				CheckDescription: "Detect and clean orphaned wisps (>1h old)",
+				CheckCategory:    CategoryCleanup,
 			},
 		},
 		threshold:     1 * time.Hour,
@@ -88,38 +85,40 @@ func (c *WispGCCheck) Run(ctx *CheckContext) *CheckResult {
 }
 
 // countAbandonedWisps counts wisps older than the threshold in a rig.
+// Queries the wisps table via bd mol wisp list (Dolt server is required).
 func (c *WispGCCheck) countAbandonedWisps(rigPath string) int {
-	// Check the beads database for wisps (follows redirect if present)
-	beadsDir := beads.ResolveBeadsDir(rigPath)
-	issuesPath := filepath.Join(beadsDir, "issues.jsonl")
-	file, err := os.Open(issuesPath)
+	// Query wisps table via bd CLI
+	cmd := exec.Command("bd", "mol", "wisp", "list", "--json")
+	cmd.Dir = rigPath
+
+	output, err := cmd.Output()
 	if err != nil {
-		return 0 // No issues file
+		// Dolt is the only supported backend — no wisps table means 0 abandoned wisps.
+		return 0
 	}
-	defer file.Close()
 
-	cutoff := time.Now().Add(-c.threshold)
+	var wisps []struct {
+		ID        string `json:"id"`
+		Status    string `json:"status"`
+		Ephemeral bool   `json:"ephemeral"`
+		UpdatedAt string `json:"updated_at"`
+	}
+	if err := json.Unmarshal(output, &wisps); err != nil {
+		return 0
+	}
+
+	// Use UTC for cutoff: Dolt stores timestamps in UTC (gt-ty4).
+	cutoff := time.Now().UTC().Add(-c.threshold)
 	count := 0
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
+	for _, w := range wisps {
+		if w.Status == "closed" {
 			continue
 		}
-
-		var issue struct {
-			ID        string    `json:"id"`
-			Status    string    `json:"status"`
-			Wisp      bool      `json:"wisp"`
-			UpdatedAt time.Time `json:"updated_at"`
-		}
-		if err := json.Unmarshal([]byte(line), &issue); err != nil {
+		updatedAt, err := time.Parse(time.RFC3339, w.UpdatedAt)
+		if err != nil {
 			continue
 		}
-
-		// Count wisps that are not closed and older than threshold
-		if issue.Wisp && issue.Status != "closed" && !issue.UpdatedAt.IsZero() && issue.UpdatedAt.Before(cutoff) {
+		if !updatedAt.IsZero() && updatedAt.Before(cutoff) {
 			count++
 		}
 	}
@@ -134,8 +133,8 @@ func (c *WispGCCheck) Fix(ctx *CheckContext) error {
 	for rigName := range c.abandonedRigs {
 		rigPath := filepath.Join(ctx.TownRoot, rigName)
 
-		// Run bd --no-daemon mol wisp gc
-		cmd := exec.Command("bd", "--no-daemon", "mol", "wisp", "gc")
+		// Run bd mol wisp gc
+		cmd := exec.Command("bd", "mol", "wisp", "gc")
 		cmd.Dir = rigPath
 		if output, err := cmd.CombinedOutput(); err != nil {
 			lastErr = fmt.Errorf("%s: %v (%s)", rigName, err, string(output))

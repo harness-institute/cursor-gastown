@@ -1,315 +1,44 @@
 package cmd
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
-)
-
-var (
-	hooksJSON    bool
-	hooksVerbose bool
 )
 
 var hooksCmd = &cobra.Command{
 	Use:     "hooks",
 	GroupID: GroupConfig,
-	Short:   "List all Cursor hooks in the workspace",
-	Long: `List all Cursor hooks configured in the workspace.
+	Short:   "Centralized hook management for Gas Town",
+	Long: `Manage Claude Code hooks across the Gas Town workspace.
 
-Scans for .cursor/hooks.json files and displays hooks by type.
+Provides centralized hook configuration with a base config and
+per-role/per-rig overrides. Changes are propagated to all workers
+via the sync command.
 
-Hook types:
-  SessionStart     - Runs when agent session starts
-  PreCompact       - Runs before context compaction
-  UserPromptSubmit - Runs before user prompt is submitted
-  PreToolUse       - Runs before tool execution
-  PostToolUse      - Runs after tool execution
-  Stop             - Runs when agent session stops
+Subcommands:
+  base       Edit the shared base hook config
+  override   Edit overrides for a role or rig
+  sync       Regenerate all .claude/settings.json files
+  diff       Show what sync would change
+  list       Show all managed settings.json locations
+  scan       Scan workspace for existing hooks
+  registry   List hooks from the registry
+  install    Install a hook from the registry
+
+Config structure:
+  Base:      ~/.gt/hooks-base.json
+  Overrides: ~/.gt/hooks-overrides/<target>.json
+
+Merge strategy: base → role → rig+role (more specific wins)
 
 Examples:
-  gt hooks              # List all hooks in workspace
-  gt hooks --verbose    # Show hook commands
-  gt hooks --json       # Output as JSON`,
-	RunE: runHooks,
+  gt hooks sync           # Regenerate all settings.json files
+  gt hooks diff           # Preview what sync would change
+  gt hooks base           # Edit the shared base config
+  gt hooks override crew  # Edit overrides for all crew workers
+  gt hooks list           # Show managed locations and sync status`,
+	RunE: requireSubcommand,
 }
 
 func init() {
 	rootCmd.AddCommand(hooksCmd)
-	hooksCmd.Flags().BoolVar(&hooksJSON, "json", false, "Output as JSON")
-	hooksCmd.Flags().BoolVarP(&hooksVerbose, "verbose", "v", false, "Show hook commands")
-}
-
-// CursorSettings represents the Cursor hooks.json structure.
-type CursorSettings struct {
-	EnabledPlugins map[string]bool                  `json:"enabledPlugins,omitempty"`
-	Hooks          map[string][]AgentHookMatcher    `json:"hooks,omitempty"`
-}
-
-// AgentHookMatcher represents a hook matcher entry.
-type AgentHookMatcher struct {
-	Matcher string       `json:"matcher"`
-	Hooks   []AgentHook  `json:"hooks"`
-}
-
-// AgentHook represents an individual hook.
-type AgentHook struct {
-	Type    string `json:"type"`
-	Command string `json:"command,omitempty"`
-}
-
-// HookInfo contains information about a discovered hook.
-type HookInfo struct {
-	Type     string   `json:"type"`     // Hook type (SessionStart, etc.)
-	Location string   `json:"location"` // Path to the settings file
-	Agent    string   `json:"agent"`    // Agent that owns this hook (e.g., "polecat/nux")
-	Matcher  string   `json:"matcher"`  // Pattern matcher (empty = all)
-	Commands []string `json:"commands"` // Hook commands
-	Status   string   `json:"status"`   // "active" or "disabled"
-}
-
-// HooksOutput is the JSON output structure.
-type HooksOutput struct {
-	TownRoot string     `json:"town_root"`
-	Hooks    []HookInfo `json:"hooks"`
-	Count    int        `json:"count"`
-}
-
-func runHooks(cmd *cobra.Command, args []string) error {
-	townRoot, err := workspace.FindFromCwd()
-	if err != nil {
-		return fmt.Errorf("not in a Gas Town workspace: %w", err)
-	}
-
-	// Find all .cursor/hooks.json files
-	hooks, err := discoverHooks(townRoot)
-	if err != nil {
-		return fmt.Errorf("discovering hooks: %w", err)
-	}
-
-	if hooksJSON {
-		return outputHooksJSON(townRoot, hooks)
-	}
-
-	return outputHooksHuman(townRoot, hooks)
-}
-
-// discoverHooks finds all Cursor hooks in the workspace.
-func discoverHooks(townRoot string) ([]HookInfo, error) {
-	var hooks []HookInfo
-
-	// Scan known locations for .cursor/hooks.json
-	// NOTE: Settings are at ~/gt/mayor/.cursor/, NOT ~/gt/.cursor/
-	// Settings at town root would pollute all child workspaces.
-	locations := []struct {
-		path  string
-		agent string
-	}{
-		{filepath.Join(townRoot, "mayor", ".cursor", "hooks.json"), "mayor/"},
-		{filepath.Join(townRoot, "deacon", ".cursor", "hooks.json"), "deacon/"},
-	}
-
-	// Scan rigs
-	entries, err := os.ReadDir(townRoot)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == "mayor" || entry.Name() == ".beads" || strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-
-		rigName := entry.Name()
-		rigPath := filepath.Join(townRoot, rigName)
-
-		// Rig-level hooks
-		locations = append(locations, struct {
-			path  string
-			agent string
-		}{filepath.Join(rigPath, ".cursor", "hooks.json"), fmt.Sprintf("%s/rig", rigName)})
-
-		// Polecats
-		polecatsDir := filepath.Join(rigPath, "polecats")
-		if polecats, err := os.ReadDir(polecatsDir); err == nil {
-			for _, p := range polecats {
-				if p.IsDir() {
-					locations = append(locations, struct {
-						path  string
-						agent string
-					}{filepath.Join(polecatsDir, p.Name(), ".cursor", "hooks.json"), fmt.Sprintf("%s/%s", rigName, p.Name())})
-				}
-			}
-		}
-
-		// Crew members
-		crewDir := filepath.Join(rigPath, "crew")
-		if crew, err := os.ReadDir(crewDir); err == nil {
-			for _, c := range crew {
-				if c.IsDir() {
-					locations = append(locations, struct {
-						path  string
-						agent string
-					}{filepath.Join(crewDir, c.Name(), ".cursor", "hooks.json"), fmt.Sprintf("%s/crew/%s", rigName, c.Name())})
-				}
-			}
-		}
-
-		// Witness
-		witnessPath := filepath.Join(rigPath, "witness", ".cursor", "hooks.json")
-		locations = append(locations, struct {
-			path  string
-			agent string
-		}{witnessPath, fmt.Sprintf("%s/witness", rigName)})
-
-		// Refinery
-		refineryPath := filepath.Join(rigPath, "refinery", ".cursor", "hooks.json")
-		locations = append(locations, struct {
-			path  string
-			agent string
-		}{refineryPath, fmt.Sprintf("%s/refinery", rigName)})
-	}
-
-	// Process each location
-	for _, loc := range locations {
-		if _, err := os.Stat(loc.path); os.IsNotExist(err) {
-			continue
-		}
-
-		found, err := parseHooksFile(loc.path, loc.agent)
-		if err != nil {
-			// Skip files that can't be parsed
-			continue
-		}
-		hooks = append(hooks, found...)
-	}
-
-	return hooks, nil
-}
-
-// parseHooksFile parses a .cursor/hooks.json file and extracts hooks.
-func parseHooksFile(path, agent string) ([]HookInfo, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var settings CursorSettings
-	if err := json.Unmarshal(data, &settings); err != nil {
-		return nil, err
-	}
-
-	var hooks []HookInfo
-
-	for hookType, matchers := range settings.Hooks {
-		for _, matcher := range matchers {
-			var commands []string
-			for _, h := range matcher.Hooks {
-				if h.Command != "" {
-					commands = append(commands, h.Command)
-				}
-			}
-
-			if len(commands) > 0 {
-				hooks = append(hooks, HookInfo{
-					Type:     hookType,
-					Location: path,
-					Agent:    agent,
-					Matcher:  matcher.Matcher,
-					Commands: commands,
-					Status:   "active",
-				})
-			}
-		}
-	}
-
-	return hooks, nil
-}
-
-func outputHooksJSON(townRoot string, hooks []HookInfo) error {
-	output := HooksOutput{
-		TownRoot: townRoot,
-		Hooks:    hooks,
-		Count:    len(hooks),
-	}
-
-	data, err := json.MarshalIndent(output, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	fmt.Println(string(data))
-	return nil
-}
-
-func outputHooksHuman(townRoot string, hooks []HookInfo) error {
-	if len(hooks) == 0 {
-		fmt.Println(style.Dim.Render("No Cursor hooks found in workspace"))
-		return nil
-	}
-
-	fmt.Printf("\n%s Cursor Hooks\n", style.Bold.Render("🪝"))
-	fmt.Printf("Town root: %s\n\n", style.Dim.Render(townRoot))
-
-	// Group by hook type
-	byType := make(map[string][]HookInfo)
-	typeOrder := []string{"SessionStart", "PreCompact", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"}
-
-	for _, h := range hooks {
-		byType[h.Type] = append(byType[h.Type], h)
-	}
-
-	// Add any types not in the predefined order
-	for t := range byType {
-		found := false
-		for _, o := range typeOrder {
-			if t == o {
-				found = true
-				break
-			}
-		}
-		if !found {
-			typeOrder = append(typeOrder, t)
-		}
-	}
-
-	for _, hookType := range typeOrder {
-		typeHooks := byType[hookType]
-		if len(typeHooks) == 0 {
-			continue
-		}
-
-		fmt.Printf("%s %s\n", style.Bold.Render("▸"), hookType)
-
-		for _, h := range typeHooks {
-			statusIcon := "●"
-			if h.Status != "active" {
-				statusIcon = "○"
-			}
-
-			matcherStr := ""
-			if h.Matcher != "" {
-				matcherStr = fmt.Sprintf(" [%s]", h.Matcher)
-			}
-
-			fmt.Printf("  %s %-25s%s\n", statusIcon, h.Agent, style.Dim.Render(matcherStr))
-
-			if hooksVerbose {
-				for _, cmd := range h.Commands {
-					fmt.Printf("    %s %s\n", style.Dim.Render("→"), cmd)
-				}
-			}
-		}
-		fmt.Println()
-	}
-
-	fmt.Printf("%s %d hooks found\n", style.Dim.Render("Total:"), len(hooks))
-
-	return nil
 }

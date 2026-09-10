@@ -33,7 +33,7 @@ This is infrastructure work. You:
 Orphan scanning requires multi-rig access and may need to interact with
 multiple Witnesses. Dogs have the cross-rig worktrees needed for this."""
 formula = "mol-orphan-scan"
-version = 1
+version = 2
 
 [squash]
 trigger = "on_complete"
@@ -84,10 +84,19 @@ bd show <issue-id>
 ```
 
 **3. Check if assignee session exists:**
+
+Parse the assignee field to extract rig and polecat name:
+- Assignee format: `<rig>/polecats/<name>` (e.g., `nrpk/polecats/rust`)
+- Extract: rig and name from the path
+
 ```bash
-# If assignee is a polecat
-gt polecats <rig>           # Is the polecat active?
-tmux has-session -t <session> 2>/dev/null
+# Check session liveness using gt session status (handles prefix derivation)
+gt session status <rig>/<name> --json | jq -r '.running' | grep -q true && echo ALIVE || echo DEAD
+```
+
+If the assignee is NOT a polecat (e.g., witness, refinery), use:
+```bash
+gt session status <rig>/<role> --json | jq -r '.running' | grep -q true && echo ALIVE || echo DEAD
 ```
 
 **4. Identify orphans:**
@@ -120,8 +129,13 @@ bd mol show <mol-id>
 ```
 
 **3. Check if owner session exists:**
+
+Parse the owner/agent field to extract rig and name:
+- Owner format: `<rig>/polecats/<name>` or `<rig>/<role>`
+
 ```bash
-tmux has-session -t <session> 2>/dev/null
+# Check session liveness using gt session status (handles prefix derivation)
+gt session status <rig>/<name> --json | jq -r '.running' | grep -q true && echo ALIVE || echo DEAD
 ```
 
 **4. Identify orphans:**
@@ -309,4 +323,71 @@ Dog returns to available state in the pool.
 [vars.scope]
 description = "Scan scope: 'town' or specific rig name"
 required = true
-default = "town"
+
+[vars.action]
+description = "Recovery action taken for an orphan (computed during execution)"
+default = ""
+
+[vars.action_summary]
+description = "Summary of all actions taken (computed during execution)"
+default = ""
+
+[vars.burn_count]
+description = "Number of orphans burned/deleted (computed during execution)"
+default = ""
+
+[vars.escalate_count]
+description = "Number of orphans escalated (computed during execution)"
+default = ""
+
+[vars.escalations_section]
+description = "Formatted escalations section for Mayor report (computed during execution)"
+default = ""
+
+[vars.id]
+description = "Orphan identifier (computed during execution)"
+default = ""
+
+[vars.issue_count]
+description = "Number of orphaned issues found (computed during execution)"
+default = ""
+
+[vars.mol_count]
+description = "Number of orphaned molecules found (computed during execution)"
+default = ""
+
+[vars.reason]
+description = "Reason for orphan cleanup action (computed during execution)"
+default = ""
+
+[vars.reassign_count]
+description = "Number of orphans reassigned (computed during execution)"
+default = ""
+
+[vars.recover_count]
+description = "Number of orphans recovered (computed during execution)"
+default = ""
+
+[vars.report]
+description = "Full orphan scan report text (computed during execution)"
+default = ""
+
+[vars.reset_count]
+description = "Number of orphans reset to open (computed during execution)"
+default = ""
+
+[vars.timestamp]
+description = "Timestamp of the scan (computed during execution)"
+default = ""
+
+[vars.total_count]
+description = "Total number of orphans found (computed during execution)"
+default = ""
+
+[vars.type]
+description = "Type of orphan (issue, molecule, wisp) (computed during execution)"
+default = ""
+
+[vars.wisp_count]
+description = "Number of orphaned wisps found (computed during execution)"
+default = ""

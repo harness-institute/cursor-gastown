@@ -10,16 +10,18 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/formula"
-	"github.com/cursorworkshop/cursor-gastown/internal/style"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/formula"
+	"github.com/harness-institute/cursor-gastown/internal/runtime"
+	"github.com/harness-institute/cursor-gastown/internal/style"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // Synthesis command flags
 var (
-	synthesisRig     string
-	synthesisDryRun  bool
-	synthesisForce   bool
+	synthesisRig      string
+	synthesisDryRun   bool
+	synthesisForce    bool
 	synthesisReviewID string
 )
 
@@ -119,7 +121,7 @@ type ConvoyMeta struct {
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
 	Status      string   `json:"status"`
-	Formula     string   `json:"formula,omitempty"`     // Formula name
+	Formula     string   `json:"formula,omitempty"`      // Formula name
 	FormulaPath string   `json:"formula_path,omitempty"` // Path to formula file
 	ReviewID    string   `json:"review_id,omitempty"`    // Review ID for output paths
 	LegIssues   []string `json:"leg_issues,omitempty"`   // Tracked leg issue IDs
@@ -172,7 +174,7 @@ func runSynthesisStart(cmd *cobra.Command, args []string) error {
 
 	if !allComplete && !synthesisForce {
 		fmt.Printf("\n%s Not all legs complete. Use --force to proceed anyway.\n",
-			style.Warning.Render("[!]"))
+			style.Warning.Render("⚠"))
 		fmt.Printf("\nIncomplete legs:\n")
 		for _, leg := range legOutputs {
 			if leg.Status != "closed" {
@@ -224,7 +226,7 @@ func runSynthesisStart(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("creating synthesis bead: %w", err)
 	}
-	fmt.Printf("%s Created synthesis bead: %s\n", style.Bold.Render("OK"), synthesisID)
+	fmt.Printf("%s Created synthesis bead: %s\n", style.Bold.Render("✓"), synthesisID)
 
 	// Sling to target rig
 	fmt.Printf("  Slinging to %s...\n", targetRig)
@@ -232,7 +234,7 @@ func runSynthesisStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("slinging synthesis: %w", err)
 	}
 
-	fmt.Printf("%s Synthesis started\n", style.Bold.Render("OK"))
+	fmt.Printf("%s Synthesis started\n", style.Bold.Render("✓"))
 	fmt.Printf("  Monitor: gt convoy status %s\n", convoyID)
 
 	return nil
@@ -275,11 +277,11 @@ func runSynthesisStatus(cmd *cobra.Command, args []string) error {
 	for _, leg := range legOutputs {
 		status := "○"
 		if leg.Status == "closed" {
-			status = "[OK]"
+			status = "✓"
 		}
 		fileStatus := ""
 		if leg.HasFile {
-			fileStatus = style.Dim.Render(" (output: [OK])")
+			fileStatus = style.Dim.Render(" (output: ✓)")
 		}
 		fmt.Printf("    %s %s: %s [%s]%s\n", status, leg.LegID, leg.Title, leg.Status, fileStatus)
 	}
@@ -287,7 +289,7 @@ func runSynthesisStatus(cmd *cobra.Command, args []string) error {
 	// Synthesis readiness
 	fmt.Printf("\n  %s\n", style.Bold.Render("Synthesis:"))
 	if allComplete {
-		fmt.Printf("    %s Ready - all legs complete\n", style.Success.Render("[OK]"))
+		fmt.Printf("    %s Ready - all legs complete\n", style.Success.Render("✓"))
 		fmt.Printf("    Run: gt synthesis start %s\n", convoyID)
 	} else {
 		completedCount := 0
@@ -320,9 +322,36 @@ func runSynthesisClose(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Read convoy to validate lifecycle state before closing
+	showArgs := []string{"show", convoyID, "--json"}
+	showCmd := exec.Command("bd", showArgs...)
+	showCmd.Dir = townBeads
+	var showOut bytes.Buffer
+	showCmd.Stdout = &showOut
+	if err := showCmd.Run(); err != nil {
+		return fmt.Errorf("reading convoy '%s': %w", convoyID, err)
+	}
+	var convoys []struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(showOut.Bytes(), &convoys); err != nil || len(convoys) == 0 {
+		return fmt.Errorf("parsing convoy '%s': invalid response", convoyID)
+	}
+	status := convoys[0].Status
+
+	if err := ensureKnownConvoyStatus(status); err != nil {
+		return fmt.Errorf("convoy '%s' has invalid lifecycle state: %w", convoyID, err)
+	}
+
+	// Idempotent: if already closed, just report it
+	if normalizeConvoyStatus(status) == convoyStatusClosed {
+		fmt.Printf("%s Convoy %s is already closed\n", style.Dim.Render("○"), convoyID)
+		return nil
+	}
+
 	// Close the convoy
 	closeArgs := []string{"close", convoyID, "--reason=synthesis complete"}
-	if sessionID := os.Getenv("CURSOR_SESSION_ID"); sessionID != "" {
+	if sessionID := runtime.SessionIDFromEnv(); sessionID != "" {
 		closeArgs = append(closeArgs, "--session="+sessionID)
 	}
 	closeCmd := exec.Command("bd", closeArgs...)
@@ -333,7 +362,7 @@ func runSynthesisClose(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("closing convoy: %w", err)
 	}
 
-	fmt.Printf("%s Convoy closed: %s\n", style.Bold.Render("OK"), convoyID)
+	fmt.Printf("%s Convoy closed: %s\n", style.Bold.Render("✓"), convoyID)
 
 	// TODO: Trigger notification if configured
 	// Parse description for "Notify: <address>" and send mail
@@ -358,17 +387,18 @@ func getConvoyMeta(convoyID string) (*ConvoyMeta, error) {
 	}
 
 	var convoys []struct {
-		ID          string `json:"id"`
-		Title       string `json:"title"`
-		Status      string `json:"status"`
-		Description string `json:"description"`
-		Type        string `json:"issue_type"`
+		ID          string   `json:"id"`
+		Title       string   `json:"title"`
+		Status      string   `json:"status"`
+		Description string   `json:"description"`
+		Type        string   `json:"issue_type"`
+		Labels      []string `json:"labels"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &convoys); err != nil {
 		return nil, fmt.Errorf("parsing convoy data: %w", err)
 	}
 
-	if len(convoys) == 0 || convoys[0].Type != "convoy" {
+	if len(convoys) == 0 || !isConvoyIssue(convoys[0].Type, convoys[0].Labels) {
 		return nil, fmt.Errorf("'%s' is not a convoy", convoyID)
 	}
 
@@ -399,7 +429,10 @@ func getConvoyMeta(convoyID string) (*ConvoyMeta, error) {
 	}
 
 	// Get tracked leg issues
-	tracked := getTrackedIssuesFromDir(townBeads, convoyID)
+	tracked, err := getTrackedIssues(townBeads, convoyID)
+	if err != nil {
+		return nil, fmt.Errorf("getting tracked issues for convoy %s: %w", convoyID, err)
+	}
 	for _, t := range tracked {
 		meta.LegIssues = append(meta.LegIssues, t.ID)
 	}
@@ -469,15 +502,26 @@ func collectLegOutputs(meta *ConvoyMeta, f *formula.Formula) ([]LegOutput, bool,
 }
 
 // expandOutputPath expands template variables in output paths.
-// Supports: {{review_id}}, {{leg.id}}
+// Supports Go template output syntax plus legacy bare placeholders.
 func expandOutputPath(directory, pattern, reviewID, legID string) string {
-	// Expand directory
-	dir := strings.ReplaceAll(directory, "{{review_id}}", reviewID)
-
-	// Expand pattern
-	file := strings.ReplaceAll(pattern, "{{leg.id}}", legID)
-
+	dir := expandOutputTemplate(directory, reviewID, legID)
+	file := expandOutputTemplate(pattern, reviewID, legID)
 	return filepath.Join(dir, file)
+}
+
+func expandOutputTemplate(tmplText, reviewID, legID string) string {
+	ctx := map[string]interface{}{
+		"review_id": reviewID,
+		"leg": map[string]interface{}{
+			"id": legID,
+		},
+	}
+	if rendered, err := renderTemplate(tmplText, ctx); err == nil {
+		return rendered
+	}
+
+	text := strings.ReplaceAll(tmplText, "{{review_id}}", reviewID)
+	return strings.ReplaceAll(text, "{{leg.id}}", legID)
 }
 
 // createSynthesisBead creates a bead for the synthesis step.
@@ -496,10 +540,25 @@ func createSynthesisBead(convoyID string, meta *ConvoyMeta, f *formula.Formula,
 	desc.WriteString(fmt.Sprintf("review_id: %s\n", reviewID))
 	desc.WriteString("\n")
 
+	var outputDir, outputSynthesis string
+	if f != nil && f.Output != nil {
+		outputDir = expandOutputTemplate(f.Output.Directory, reviewID, "")
+		outputSynthesis = f.Output.Synthesis
+	}
+
 	// Add synthesis instructions from formula
 	if f != nil && f.Synthesis != nil && f.Synthesis.Description != "" {
+		formulaName := meta.Formula
+		if formulaName == "" {
+			formulaName = f.Name
+		}
+		synCtx := formulaTemplateContext(formulaName, meta.Title, reviewID, 0, "", nil, nil, nil)
+		synCtx["problem"] = meta.Title
+		addOutputTemplateContext(synCtx, outputDir, outputSynthesis)
+		synDesc := renderTemplateOrDefault(f.Synthesis.Description, synCtx, f.Synthesis.Description)
+
 		desc.WriteString("## Instructions\n\n")
-		desc.WriteString(f.Synthesis.Description)
+		desc.WriteString(synDesc)
 		desc.WriteString("\n\n")
 	}
 
@@ -519,9 +578,13 @@ func createSynthesisBead(convoyID string, meta *ConvoyMeta, f *formula.Formula,
 
 	// Add output path if configured
 	if f != nil && f.Output != nil && f.Output.Synthesis != "" {
-		outputPath := strings.ReplaceAll(f.Output.Directory, "{{review_id}}", reviewID)
-		outputPath = filepath.Join(outputPath, f.Output.Synthesis)
+		outputPath := filepath.Join(outputDir, f.Output.Synthesis)
 		desc.WriteString(fmt.Sprintf("\n## Output\n\nWrite synthesis to: %s\n", outputPath))
+	}
+
+	// Guard against flag-like synthesis titles (gt-e0kx5)
+	if beads.IsFlagLikeTitle(title) {
+		return "", fmt.Errorf("refusing to create synthesis bead: title %q looks like a CLI flag", title)
 	}
 
 	// Create the bead
@@ -553,19 +616,16 @@ func createSynthesisBead(convoyID string, meta *ConvoyMeta, f *formula.Formula,
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
-		// Try to extract ID from non-JSON output
+		// Try to extract ID from non-JSON output (bead IDs have format: prefix-id)
 		out := strings.TrimSpace(stdout.String())
-		if strings.HasPrefix(out, "hq-") || strings.HasPrefix(out, "gt-") {
+		if looksLikeIssueID(out) {
 			return out, nil
 		}
 		return "", fmt.Errorf("parsing created bead: %w", err)
 	}
 
-	// Add tracking relation: convoy tracks synthesis
-	depArgs := []string{"dep", "add", convoyID, result.ID, "--type=tracks"}
-	depCmd := exec.Command("bd", depArgs...)
-	depCmd.Dir = townBeads
-	_ = depCmd.Run() // Non-fatal if this fails
+	// Add tracking relation: convoy tracks synthesis.
+	_ = addTrackingRelationFn(townBeads, convoyID, result.ID) // Non-fatal if this fails
 
 	return result.ID, nil
 }

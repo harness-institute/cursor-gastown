@@ -6,18 +6,22 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
-	"github.com/cursorworkshop/cursor-gastown/internal/config"
-	"github.com/cursorworkshop/cursor-gastown/internal/session"
-	"github.com/cursorworkshop/cursor-gastown/internal/tmux"
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/harness-institute/cursor-gastown/internal/config"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/session"
+	"github.com/harness-institute/cursor-gastown/internal/tmux"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 var (
-	themeListFlag    bool
-	themeApplyFlag   bool
+	themeListFlag     bool
 	themeApplyAllFlag bool
 )
+
+// Valid CLI theme modes
+var validCLIThemes = []string{"auto", "dark", "light"}
 
 var themeCmd = &cobra.Command{
 	Use:     "theme [name]",
@@ -32,6 +36,7 @@ Examples:
   gt theme              # Show current theme
   gt theme --list       # List available themes
   gt theme forest       # Set theme to 'forest'
+  gt theme none         # Disable tmux theming for this rig
   gt theme apply        # Apply theme to all running sessions in this rig`,
 	RunE: runTheme,
 }
@@ -43,14 +48,40 @@ var themeApplyCmd = &cobra.Command{
 
 By default, only applies to sessions in the current rig.
 Use --all to apply to sessions across all rigs.`,
-	RunE:  runThemeApply,
+	RunE: runThemeApply,
+}
+
+var themeCLICmd = &cobra.Command{
+	Use:   "cli [mode]",
+	Short: "View or set CLI color scheme (dark/light/auto)",
+	Long: `Manage CLI output color scheme for Gas Town commands.
+
+Without arguments, shows the current CLI theme mode and detection.
+With a mode argument, sets the CLI theme preference.
+
+Modes:
+  auto   - Automatically detect terminal background (default)
+  dark   - Force dark mode colors (light text for dark backgrounds)
+  light  - Force light mode colors (dark text for light backgrounds)
+
+The setting is stored in town settings (settings/config.json) and can
+be overridden per-session via the GT_THEME environment variable.
+
+Examples:
+  gt theme cli              # Show current CLI theme
+  gt theme cli dark         # Set CLI theme to dark mode
+  gt theme cli auto         # Reset to auto-detection
+  GT_THEME=light gt status  # Override for a single command`,
+	RunE: runThemeCLI,
 }
 
 func init() {
 	rootCmd.AddCommand(themeCmd)
 	themeCmd.AddCommand(themeApplyCmd)
+	themeCmd.AddCommand(themeCLICmd)
 	themeCmd.Flags().BoolVarP(&themeListFlag, "list", "l", false, "List available themes")
 	themeApplyCmd.Flags().BoolVarP(&themeApplyAllFlag, "all", "a", false, "Apply to all rigs, not just current")
+
 }
 
 func runTheme(cmd *cobra.Command, args []string) error {
@@ -61,6 +92,7 @@ func runTheme(cmd *cobra.Command, args []string) error {
 			theme := tmux.GetThemeByName(name)
 			fmt.Printf("  %-10s  %s\n", name, theme.Style())
 		}
+		fmt.Printf("  %-10s  disable tmux theming\n", "none")
 		// Also show Mayor theme
 		mayor := tmux.MayorTheme()
 		fmt.Printf("  %-10s  %s (Mayor only)\n", mayor.Name, mayor.Style())
@@ -75,22 +107,15 @@ func runTheme(cmd *cobra.Command, args []string) error {
 
 	// Show current theme assignment
 	if len(args) == 0 {
-		theme := getThemeForRig(rigName)
+		desc := describeRigTheme(rigName)
 		fmt.Printf("Rig: %s\n", rigName)
-		fmt.Printf("Theme: %s (%s)\n", theme.Name, theme.Style())
-		// Show if it's configured vs default
-		if configured := loadRigTheme(rigName); configured != "" {
-			fmt.Printf("(configured in settings/config.json)\n")
-		} else {
-			fmt.Printf("(default, based on rig name hash)\n")
-		}
+		fmt.Printf("Theme: %s\n", desc)
 		return nil
 	}
 
 	// Set theme
 	themeName := args[0]
-	theme := tmux.GetThemeByName(themeName)
-	if theme == nil {
+	if !strings.EqualFold(themeName, "none") && tmux.GetThemeByName(themeName) == nil {
 		return fmt.Errorf("unknown theme: %s (use --list to see available themes)", themeName)
 	}
 
@@ -99,7 +124,11 @@ func runTheme(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("saving theme config: %w", err)
 	}
 
-	fmt.Printf("Theme '%s' saved for rig '%s'\n", themeName, rigName)
+	if strings.EqualFold(themeName, "none") {
+		fmt.Printf("Tmux theming disabled for rig '%s'\n", rigName)
+	} else {
+		fmt.Printf("Theme '%s' saved for rig '%s'\n", themeName, rigName)
+	}
 	fmt.Println("Run 'gt theme apply' to apply to running sessions")
 
 	return nil
@@ -107,6 +136,7 @@ func runTheme(cmd *cobra.Command, args []string) error {
 
 func runThemeApply(cmd *cobra.Command, args []string) error {
 	t := tmux.NewTmux()
+	townRoot, _ := workspace.FindFromCwd()
 
 	// Get all sessions
 	sessions, err := t.ListSessions()
@@ -117,79 +147,80 @@ func runThemeApply(cmd *cobra.Command, args []string) error {
 	// Determine current rig
 	rigName := detectCurrentRig()
 
-	// Get session names for comparison
-	mayorSession := session.MayorSessionName()
-	deaconSession := session.DeaconSessionName()
-
 	// Apply to matching sessions
 	applied := 0
 	for _, sess := range sessions {
-		if !strings.HasPrefix(sess, "gt-") {
+		if !session.IsKnownSession(sess) {
 			continue
 		}
 
 		// Determine theme and identity for this session
-		var theme tmux.Theme
+		var theme *tmux.Theme
 		var rig, worker, role string
 
-		if sess == mayorSession {
-			theme = tmux.MayorTheme()
+		identity, err := session.ParseSessionName(sess)
+		if err != nil {
+			continue
+		}
+
+		var crewMember string
+		switch identity.Role {
+		case session.RoleMayor:
+			theme = tmux.ResolveSessionTheme(townRoot, "", constants.RoleMayor, "")
 			worker = "Mayor"
-			role = "coordinator"
-		} else if sess == deaconSession {
-			theme = tmux.DeaconTheme()
+			role = constants.RoleMayor
+		case session.RoleDeacon:
+			theme = tmux.ResolveSessionTheme(townRoot, "", constants.RoleDeacon, "")
 			worker = "Deacon"
-			role = "health-check"
-		} else if strings.HasSuffix(sess, "-witness") && strings.HasPrefix(sess, "gt-") {
-			// Witness sessions: gt-<rig>-witness
-			rig = strings.TrimPrefix(strings.TrimSuffix(sess, "-witness"), "gt-")
-			theme = getThemeForRole(rig, "witness")
-			worker = "witness"
-			role = "witness"
-		} else {
-			// Parse session name: gt-<rig>-<worker> or gt-<rig>-crew-<name>
-			parts := strings.SplitN(sess, "-", 3)
-			if len(parts) < 3 {
-				continue
-			}
-			rig = parts[1]
+			role = constants.RoleDeacon
+		default:
+			rig = identity.Rig
 
 			// Skip if not matching current rig (unless --all flag)
 			if !themeApplyAllFlag && rigName != "" && rig != rigName {
 				continue
 			}
 
-			workerPart := parts[2]
-			if strings.HasPrefix(workerPart, "crew-") {
-				worker = strings.TrimPrefix(workerPart, "crew-")
-				role = "crew"
-			} else if workerPart == "refinery" {
-				worker = "refinery"
-				role = "refinery"
-			} else {
-				worker = workerPart
-				role = "polecat"
+			role = string(identity.Role)
+			switch identity.Role {
+			case session.RoleWitness:
+				worker = constants.RoleWitness
+			case session.RoleRefinery:
+				worker = constants.RoleRefinery
+			case session.RoleCrew:
+				worker = identity.Name
+				crewMember = identity.Name
+			default:
+				worker = identity.Name
+				crewMember = identity.Name
 			}
 
-			// Use role-based theme resolution
-			theme = getThemeForRole(rig, role)
+			// Use role-based theme resolution (with per-member override)
+			theme = tmux.ResolveSessionTheme(townRoot, rig, role, crewMember)
 		}
 
-		// Apply theme and status format
-		if err := t.ApplyTheme(sess, theme); err != nil {
+		// Resolve window tint from config.
+		if theme != nil {
+			theme.Window = session.ResolveWindowTint(rig, role)
+			if theme.Window == nil && session.IsWindowTintEnabled(rig) {
+				factor := session.ResolveTintFactor(rig)
+				theme.Window = &tmux.WindowStyle{
+					BG: tmux.DarkenColor(theme.BG, factor),
+					FG: theme.FG,
+				}
+			}
+		}
+
+		if err := t.ConfigureGasTownSession(sess, theme, rig, worker, role); err != nil {
 			fmt.Printf("  %s: failed (%v)\n", sess, err)
 			continue
 		}
-		if err := t.SetStatusFormat(sess, rig, worker, role); err != nil {
-			fmt.Printf("  %s: failed to set format (%v)\n", sess, err)
-			continue
-		}
-		if err := t.SetDynamicStatus(sess); err != nil {
-			fmt.Printf("  %s: failed to set dynamic status (%v)\n", sess, err)
-			continue
-		}
 
-		fmt.Printf("  %s: applied %s theme\n", sess, theme.Name)
+		if theme == nil {
+			fmt.Printf("  %s: disabled tmux theming\n", sess)
+		} else {
+			fmt.Printf("  %s: applied %s theme\n", sess, theme.Name)
+		}
 		applied++
 	}
 
@@ -210,11 +241,9 @@ func detectCurrentRig() string {
 	}
 
 	// Try to extract from tmux session name
-	if session := detectCurrentSession(); session != "" {
-		// Extract rig from session name: gt-<rig>-...
-		parts := strings.SplitN(session, "-", 3)
-		if len(parts) >= 2 && parts[0] == "gt" && parts[1] != "mayor" && parts[1] != "deacon" {
-			return parts[1]
+	if sessName := detectCurrentSession(); sessName != "" {
+		if identity, err := session.ParseSessionName(sessName); err == nil && identity.Rig != "" {
+			return identity.Rig
 		}
 	}
 
@@ -239,91 +268,45 @@ func detectCurrentRig() string {
 	// Extract first path component (rig name)
 	// Patterns: <rig>/..., mayor/..., deacon/...
 	parts := strings.Split(rel, string(filepath.Separator))
-	if len(parts) > 0 && parts[0] != "." && parts[0] != "mayor" && parts[0] != "deacon" {
+	if len(parts) > 0 && parts[0] != "." && parts[0] != constants.RoleMayor && parts[0] != constants.RoleDeacon {
 		return parts[0]
 	}
 
 	return ""
 }
 
-// getThemeForRig returns the theme for a rig, checking config first.
-func getThemeForRig(rigName string) tmux.Theme {
-	// Try to load configured theme
-	if themeName := loadRigTheme(rigName); themeName != "" {
-		if theme := tmux.GetThemeByName(themeName); theme != nil {
-			return *theme
-		}
-	}
-	// Fall back to hash-based assignment
-	return tmux.AssignTheme(rigName)
-}
-
-// getThemeForRole returns the theme for a specific role in a rig.
-// Resolution order:
-// 1. Per-rig role override (rig/settings/config.json)
-// 2. Global role default (mayor/config.json)
-// 3. Built-in role defaults (witness=rust, refinery=plum)
-// 4. Rig theme (config or hash-based)
-func getThemeForRole(rigName, role string) tmux.Theme {
-	townRoot, _ := workspace.FindFromCwd()
-
-	// 1. Check per-rig role override
-	if townRoot != "" {
-		settingsPath := filepath.Join(townRoot, rigName, "settings", "config.json")
-		if settings, err := config.LoadRigSettings(settingsPath); err == nil {
-			if settings.Theme != nil && settings.Theme.RoleThemes != nil {
-				if themeName, ok := settings.Theme.RoleThemes[role]; ok {
-					if theme := tmux.GetThemeByName(themeName); theme != nil {
-						return *theme
-					}
-				}
-			}
-		}
-	}
-
-	// 2. Check global role default (mayor config)
-	if townRoot != "" {
-		mayorConfigPath := filepath.Join(townRoot, "mayor", "config.json")
-		if mayorCfg, err := config.LoadMayorConfig(mayorConfigPath); err == nil {
-			if mayorCfg.Theme != nil && mayorCfg.Theme.RoleDefaults != nil {
-				if themeName, ok := mayorCfg.Theme.RoleDefaults[role]; ok {
-					if theme := tmux.GetThemeByName(themeName); theme != nil {
-						return *theme
-					}
-				}
-			}
-		}
-	}
-
-	// 3. Check built-in role defaults
-	builtins := config.BuiltinRoleThemes()
-	if themeName, ok := builtins[role]; ok {
-		if theme := tmux.GetThemeByName(themeName); theme != nil {
-			return *theme
-		}
-	}
-
-	// 4. Fall back to rig theme
-	return getThemeForRig(rigName)
-}
-
-// loadRigTheme loads the theme name from rig settings.
-func loadRigTheme(rigName string) string {
+func describeRigTheme(rigName string) string {
 	townRoot, err := workspace.FindFromCwd()
 	if err != nil || townRoot == "" {
-		return ""
+		theme := tmux.AssignTheme(rigName)
+		return fmt.Sprintf("%s (%s, default auto-assignment)", theme.Name, theme.Style())
 	}
 
 	settingsPath := filepath.Join(townRoot, rigName, "settings", "config.json")
 	settings, err := config.LoadRigSettings(settingsPath)
 	if err != nil {
-		return ""
+		theme := tmux.AssignTheme(rigName)
+		return fmt.Sprintf("%s (%s, default auto-assignment)", theme.Name, theme.Style())
 	}
 
-	if settings.Theme != nil && settings.Theme.Name != "" {
-		return settings.Theme.Name
+	if settings.Theme == nil {
+		theme := tmux.AssignTheme(rigName)
+		return fmt.Sprintf("%s (%s, default auto-assignment)", theme.Name, theme.Style())
 	}
-	return ""
+	if settings.Theme.Disabled {
+		return "none (configured)"
+	}
+	if settings.Theme.Custom != nil {
+		return fmt.Sprintf("custom (bg=%s, fg=%s)", settings.Theme.Custom.BG, settings.Theme.Custom.FG)
+	}
+	if settings.Theme.Name != "" {
+		if theme := tmux.GetThemeByName(settings.Theme.Name); theme != nil {
+			return fmt.Sprintf("%s (%s, configured)", theme.Name, theme.Style())
+		}
+		return fmt.Sprintf("%s (configured)", settings.Theme.Name)
+	}
+	theme := tmux.AssignTheme(rigName)
+	return fmt.Sprintf("%s (%s, auto-assignment)", theme.Name, theme.Style())
 }
 
 // saveRigTheme saves the theme name to rig settings.
@@ -350,9 +333,18 @@ func saveRigTheme(rigName, themeName string) error {
 		}
 	}
 
-	// Set theme
-	settings.Theme = &config.ThemeConfig{
-		Name: themeName,
+	// Update theme name, preserving existing RoleThemes and Custom
+	if settings.Theme == nil {
+		settings.Theme = &config.ThemeConfig{}
+	}
+	if strings.EqualFold(themeName, "none") {
+		settings.Theme.Disabled = true
+		settings.Theme.Name = ""
+		settings.Theme.Custom = nil
+	} else {
+		settings.Theme.Disabled = false
+		settings.Theme.Name = themeName
+		settings.Theme.Custom = nil
 	}
 
 	// Save
@@ -361,4 +353,100 @@ func saveRigTheme(rigName, themeName string) error {
 	}
 
 	return nil
+}
+
+func runThemeCLI(cmd *cobra.Command, args []string) error {
+	townRoot, err := workspace.FindFromCwd()
+	if err != nil {
+		return fmt.Errorf("finding workspace: %w", err)
+	}
+	if townRoot == "" {
+		return fmt.Errorf("not in a Gas Town workspace")
+	}
+
+	settingsPath := config.TownSettingsPath(townRoot)
+
+	// Show current theme
+	if len(args) == 0 {
+		settings, err := config.LoadOrCreateTownSettings(settingsPath)
+		if err != nil {
+			return fmt.Errorf("loading settings: %w", err)
+		}
+
+		// Determine effective mode
+		configValue := settings.CLITheme
+		if configValue == "" {
+			configValue = "auto"
+		}
+
+		// Check for env override
+		envValue := os.Getenv("GT_THEME")
+		effectiveMode := configValue
+		if envValue != "" {
+			effectiveMode = strings.ToLower(envValue)
+		}
+
+		fmt.Printf("CLI Theme:\n")
+		fmt.Printf("  Configured: %s\n", configValue)
+		if envValue != "" {
+			fmt.Printf("  Override:   %s (via GT_THEME)\n", envValue)
+		}
+		fmt.Printf("  Effective:  %s\n", effectiveMode)
+
+		// Show detection result for auto mode
+		if effectiveMode == "auto" {
+			detected := "light"
+			if detectTerminalBackground() {
+				detected = "dark"
+			}
+			fmt.Printf("  Detected:   %s background\n", detected)
+		}
+
+		return nil
+	}
+
+	// Set CLI theme
+	mode := strings.ToLower(args[0])
+	if !isValidCLITheme(mode) {
+		return fmt.Errorf("invalid CLI theme '%s' (valid: auto, dark, light)", mode)
+	}
+
+	// Load existing settings
+	settings, err := config.LoadOrCreateTownSettings(settingsPath)
+	if err != nil {
+		return fmt.Errorf("loading settings: %w", err)
+	}
+
+	// Update CLITheme
+	settings.CLITheme = mode
+
+	// Save
+	if err := config.SaveTownSettings(settingsPath, settings); err != nil {
+		return fmt.Errorf("saving settings: %w", err)
+	}
+
+	fmt.Printf("CLI theme set to '%s'\n", mode)
+	if mode == "auto" {
+		fmt.Println("Colors will adapt to your terminal's background.")
+	} else {
+		fmt.Printf("Colors optimized for %s backgrounds.\n", mode)
+	}
+
+	return nil
+}
+
+// isValidCLITheme checks if a CLI theme mode is valid.
+func isValidCLITheme(mode string) bool {
+	for _, valid := range validCLIThemes {
+		if mode == valid {
+			return true
+		}
+	}
+	return false
+}
+
+// detectTerminalBackground returns true if terminal has dark background.
+func detectTerminalBackground() bool {
+	// Use termenv for detection
+	return termenv.HasDarkBackground()
 }

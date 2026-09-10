@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/workspace"
+	"github.com/gofrs/flock"
+	"github.com/harness-institute/cursor-gastown/internal/workspace"
 )
 
 // Event represents an activity event in Gas Town.
@@ -50,25 +50,34 @@ const (
 	TypeSessionStart = "session_start"
 	TypeSessionEnd   = "session_end"
 
+	// Session death events (for crash investigation)
+	TypeSessionDeath = "session_death" // Feed-visible session termination
+	TypeMassDeath    = "mass_death"    // Multiple sessions died in short window
+
 	// Witness patrol events
 	TypePatrolStarted   = "patrol_started"
 	TypePolecatChecked  = "polecat_checked"
 	TypePolecatNudged   = "polecat_nudged"
-	TypeEscalationSent  = "escalation_sent"
-	TypePatrolComplete  = "patrol_complete"
+	TypeEscalationSent   = "escalation_sent"
+	TypeEscalationAcked  = "escalation_acked"
+	TypeEscalationClosed = "escalation_closed"
+	TypePatrolComplete   = "patrol_complete"
 
 	// Merge queue events (emitted by refinery)
 	TypeMergeStarted = "merge_started"
 	TypeMerged       = "merged"
 	TypeMergeFailed  = "merge_failed"
 	TypeMergeSkipped = "merge_skipped"
+
+	// Scheduler events
+	TypeSchedulerEnqueue        = "scheduler_enqueue"         // Bead scheduled for deferred dispatch
+	TypeSchedulerDispatch       = "scheduler_dispatch"        // Bead dispatched from scheduler
+	TypeSchedulerDispatchFailed = "scheduler_dispatch_failed" // Bead dispatch failed (requeued)
+	TypeSchedulerCloseRetry     = "scheduler_close_retry"     // Context close needed last-resort attempt
 )
 
 // EventsFile is the name of the raw events log.
 const EventsFile = ".events.jsonl"
-
-// mutex protects concurrent writes to the events file.
-var mutex sync.Mutex
 
 // Log writes an event to the events log.
 // The event is appended to ~/gt/.events.jsonl.
@@ -96,6 +105,8 @@ func LogAudit(eventType, actor string, payload map[string]interface{}) error {
 }
 
 // write appends an event to the events file.
+// Uses flock for cross-process synchronization — sync.Mutex only protects
+// intra-process goroutines, but multiple gt processes write concurrently.
 func write(event Event) error {
 	// Find town root
 	townRoot, err := workspace.FindFromCwd()
@@ -113,18 +124,25 @@ func write(event Event) error {
 	}
 	data = append(data, '\n')
 
-	// Append to file with proper locking
-	mutex.Lock()
-	defer mutex.Unlock()
+	// Acquire cross-process file lock
+	fl := flock.New(eventsPath + ".lock")
+	if err := fl.Lock(); err != nil {
+		return fmt.Errorf("acquiring events file lock: %w", err)
+	}
+	defer fl.Unlock() //nolint:errcheck // best-effort unlock
 
 	f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) //nolint:gosec // G302: events file is non-sensitive operational data
 	if err != nil {
 		return fmt.Errorf("opening events file: %w", err)
 	}
-	defer f.Close()
 
 	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
 		return fmt.Errorf("writing event: %w", err)
+	}
+
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("closing events file: %w", err)
 	}
 
 	return nil
@@ -274,8 +292,39 @@ func HaltPayload(services []string) map[string]interface{} {
 	}
 }
 
+// SessionDeathPayload creates a payload for session death events.
+// session: tmux session name that died
+// agent: Gas Town agent identity (e.g., "gastown/polecats/Toast")
+// reason: why the session was killed (e.g., "zombie cleanup", "user request", "doctor fix")
+// caller: what initiated the kill (e.g., "daemon", "doctor", "gt down")
+func SessionDeathPayload(session, agent, reason, caller string) map[string]interface{} {
+	return map[string]interface{}{
+		"session": session,
+		"agent":   agent,
+		"reason":  reason,
+		"caller":  caller,
+	}
+}
+
+// MassDeathPayload creates a payload for mass death events.
+// count: number of sessions that died
+// window: time window in which deaths occurred (e.g., "5s")
+// sessions: list of session names that died
+// possibleCause: suspected cause if known
+func MassDeathPayload(count int, window string, sessions []string, possibleCause string) map[string]interface{} {
+	p := map[string]interface{}{
+		"count":    count,
+		"window":   window,
+		"sessions": sessions,
+	}
+	if possibleCause != "" {
+		p["possible_cause"] = possibleCause
+	}
+	return p
+}
+
 // SessionPayload creates a payload for session start/end events.
-// sessionID: Cursor session UUID
+// sessionID: Claude Code session UUID
 // role: Gas Town role (e.g., "gastown/crew/joe", "deacon")
 // topic: What the session is working on
 // cwd: Working directory
@@ -292,4 +341,30 @@ func SessionPayload(sessionID, role, topic, cwd string) map[string]interface{} {
 		p["cwd"] = cwd
 	}
 	return p
+}
+
+// SchedulerEnqueuePayload creates a payload for scheduler enqueue events.
+func SchedulerEnqueuePayload(beadID, rig string) map[string]interface{} {
+	return map[string]interface{}{
+		"bead": beadID,
+		"rig":  rig,
+	}
+}
+
+// SchedulerDispatchPayload creates a payload for scheduler dispatch events.
+func SchedulerDispatchPayload(beadID, rig, polecat string) map[string]interface{} {
+	return map[string]interface{}{
+		"bead":    beadID,
+		"rig":     rig,
+		"polecat": polecat,
+	}
+}
+
+// SchedulerDispatchFailedPayload creates a payload for scheduler dispatch failure events.
+func SchedulerDispatchFailedPayload(beadID, rig, errMsg string) map[string]interface{} {
+	return map[string]interface{}{
+		"bead":  beadID,
+		"rig":   rig,
+		"error": errMsg,
+	}
 }

@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cursorworkshop/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/beads"
+	"github.com/harness-institute/cursor-gastown/internal/constants"
+	"github.com/harness-institute/cursor-gastown/internal/util"
 )
 
 // EventSource represents a source of events
@@ -34,6 +36,7 @@ func NewBdActivitySource(workDir string) (*BdActivitySource, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	cmd := exec.CommandContext(ctx, "bd", "activity", "--follow")
+	util.SetDetachedProcessGroup(cmd)
 	cmd.Dir = workDir
 
 	stdout, err := cmd.StdoutPipe()
@@ -83,8 +86,8 @@ func (s *BdActivitySource) Close() error {
 	return s.cmd.Wait()
 }
 
-// bd activity line pattern: [HH:MM:SS] SYMBOL BEAD_ID action - description
-var bdActivityPattern = regexp.MustCompile(`^\[(\d{2}:\d{2}:\d{2})\]\s+([+>OK!X@#])\s+(\S+)?\s*(\w+)?\s*-?\s*(.*)$`)
+// bd activity line pattern: [HH:MM:SS] SYMBOL BEAD_ID action · description
+var bdActivityPattern = regexp.MustCompile(`^\[(\d{2}:\d{2}:\d{2})\]\s+([+→✓✗⊘📌])\s+(\S+)?\s*(\w+)?\s*·?\s*(.*)$`)
 
 // parseBdActivityLine parses a line from bd activity output
 func parseBdActivityLine(line string) *Event {
@@ -114,15 +117,15 @@ func parseBdActivityLine(line string) *Event {
 	switch symbol {
 	case "+":
 		eventType = "create"
-	case ">":
+	case "→":
 		eventType = "update"
-	case "OK":
+	case "✓":
 		eventType = "complete"
-	case "X", "!":
+	case "✗":
 		eventType = "fail"
-	case "@":
+	case "⊘":
 		eventType = "delete"
-	case "#":
+	case "📌":
 		eventType = "pin"
 	}
 
@@ -191,17 +194,17 @@ func parseBeadContext(beadID string) (actor, rig, role string) {
 
 	// Build actor identifier
 	switch parsedRole {
-	case "mayor", "deacon":
+	case constants.RoleMayor, constants.RoleDeacon:
 		actor = parsedRole
-	case "witness", "refinery":
+	case constants.RoleWitness, constants.RoleRefinery:
 		actor = parsedRole
-	case "crew":
+	case constants.RoleCrew:
 		if name != "" {
 			actor = parsedRig + "/crew/" + name
 		} else {
 			actor = parsedRole
 		}
-	case "polecat":
+	case constants.RolePolecat:
 		if name != "" {
 			actor = parsedRig + "/" + name
 		} else {
@@ -241,7 +244,7 @@ func NewGtEventsSource(townRoot string) (*GtEventsSource, error) {
 
 	source := &GtEventsSource{
 		file:   file,
-		events: make(chan Event, 100),
+		events: make(chan Event, 200),
 		cancel: cancel,
 	}
 
@@ -250,13 +253,18 @@ func NewGtEventsSource(townRoot string) (*GtEventsSource, error) {
 	return source, nil
 }
 
-// tail follows the file and sends events
+// tail loads recent history then follows the file for new events.
 func (s *GtEventsSource) tail(ctx context.Context) {
 	defer close(s.events)
 
-	// Seek to end for live tailing
+	// Load recent events (last 200 lines) for initial display
+	s.loadRecentEvents()
+
+	// Seek to true EOF so the tail scanner starts cleanly,
+	// regardless of the preload scanner's internal read-ahead buffer.
 	_, _ = s.file.Seek(0, 2)
 
+	// Now tail for new events
 	scanner := bufio.NewScanner(s.file)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -274,6 +282,50 @@ func (s *GtEventsSource) tail(ctx context.Context) {
 					default:
 					}
 				}
+			}
+		}
+	}
+}
+
+// loadRecentEvents reads the last N lines of the file and emits them as events.
+// Uses a ring buffer so memory is O(maxLines) regardless of file size.
+func (s *GtEventsSource) loadRecentEvents() {
+	const maxLines = 200
+
+	if _, err := s.file.Seek(0, 0); err != nil {
+		return
+	}
+
+	// Ring buffer: only keep the last maxLines lines in memory
+	ring := make([]string, maxLines)
+	idx := 0
+	count := 0
+
+	scanner := bufio.NewScanner(s.file)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	for scanner.Scan() {
+		ring[idx%maxLines] = scanner.Text()
+		idx++
+		count++
+	}
+	if scanner.Err() != nil {
+		// Scanner failed (e.g. token too long) — seek to EOF so tail starts clean
+		_, _ = s.file.Seek(0, 2)
+		return
+	}
+
+	// Emit lines in order (oldest first)
+	n := count
+	if n > maxLines {
+		n = maxLines
+	}
+	start := idx - n
+	for i := start; i < idx; i++ {
+		line := ring[i%maxLines]
+		if event := parseGtEventLine(line); event != nil {
+			select {
+			case s.events <- *event:
+			default:
 			}
 		}
 	}
@@ -321,7 +373,7 @@ func parseGtEventLine(line string) *Event {
 	if rig == "" && ge.Actor != "" {
 		// Extract rig from actor like "gastown/witness"
 		parts := strings.Split(ge.Actor, "/")
-		if len(parts) > 0 && parts[0] != "mayor" && parts[0] != "deacon" {
+		if len(parts) > 0 && parts[0] != constants.RoleMayor && parts[0] != constants.RoleDeacon {
 			rig = parts[0]
 		}
 	}
@@ -334,16 +386,16 @@ func parseGtEventLine(line string) *Event {
 			role = parts[len(parts)-1]
 			// Check for known roles
 			switch parts[len(parts)-1] {
-			case "witness", "refinery":
+			case constants.RoleWitness, constants.RoleRefinery:
 				role = parts[len(parts)-1]
 			default:
 				// Could be polecat name - check second-to-last part
 				if len(parts) >= 2 {
 					switch parts[len(parts)-2] {
 					case "polecats":
-						role = "polecat"
-					case "crew":
-						role = "crew"
+						role = constants.RolePolecat
+					case constants.RoleCrew:
+						role = constants.RoleCrew
 					}
 				}
 			}
@@ -515,6 +567,11 @@ type CombinedSource struct {
 	cancel  context.CancelFunc
 }
 
+// fanInTimeout is the maximum time a fan-in goroutine will wait for an event
+// before checking if it should exit. This prevents goroutine leaks when a source
+// channel blocks forever and the context is never canceled.
+const fanInTimeout = 30 * time.Second
+
 // NewCombinedSource creates a source that merges multiple event sources
 func NewCombinedSource(sources ...EventSource) *CombinedSource {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -525,7 +582,11 @@ func NewCombinedSource(sources ...EventSource) *CombinedSource {
 		cancel:  cancel,
 	}
 
-	// Fan-in from all sources
+	// Fan-in from all sources with timeout to prevent goroutine leaks.
+	// Each goroutine will exit if:
+	// 1. Context is canceled (Close() called)
+	// 2. Source channel is closed
+	// 3. No event received for fanInTimeout (prevents indefinite blocking)
 	for _, src := range sources {
 		go func(s EventSource) {
 			for {
@@ -538,8 +599,18 @@ func NewCombinedSource(sources ...EventSource) *CombinedSource {
 					}
 					select {
 					case combined.events <- event:
+					case <-ctx.Done():
+						return
 					default:
 						// Drop if full
+					}
+				case <-time.After(fanInTimeout):
+					// Timeout - check if we should exit
+					select {
+					case <-ctx.Done():
+						return
+					default:
+						// Context still active, continue waiting
 					}
 				}
 			}

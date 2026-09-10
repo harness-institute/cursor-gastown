@@ -1,9 +1,8 @@
-# Binaries (but not cmd/gt source)
+# Binaries
 /gt
-!cmd/gt/
+/gt-proxy-server
+/gt-proxy-client
 *.exe
- /npm-package/bin/gt
- /npm-package/bin/gt.exe
 
 # Build
 /dist/
@@ -20,31 +19,83 @@
 .DS_Store
 Thumbs.db
 
-# Local state
-.cursor/
+# Claude Code local state (but track commands/skills)
+.claude/
+!.claude/commands/
+!.claude/skills/
 
 # Test
 coverage.out
 *.test
+internal/events/*/
 
 # Local config
 config.toml
 !config.example.toml
+!internal/hooks/templates/vibe/config.toml
+gt
 
-# Runtime state
+# Runtime state (ignore contents, but allow setup-hooks to be tracked)
 state.json
-.runtime/
+.runtime/*
+!.runtime/setup-hooks/
 
 # Beads runtime state (not tracked)
 # Formulas ARE tracked for `go install @latest` - see bottom of file
 .beads/redirect
-.beads/issues.jsonl
 .beads/interactions.jsonl
 .beads/metadata.json
 .beads/mq/
 .beads/last-touched
 .beads/daemon-*.log.gz
+.beads/.sync.lock
+.beads/sync_base.jsonl
+.beads/backup/
 .beads-wisp/
 
-# Embedded formulas are committed so `go install @latest` works
-# Run `go generate ./...` after modifying .beads/formulas/
+# Clone-specific CLAUDE.md (regenerated locally per clone)
+CLAUDE.md
+# But keep the embedded template for gt doctor version checks
+!internal/templates/townroot/claude.md
+
+# Formulas: source of truth is internal/formula/formulas/ (embedded in binary).
+# .beads/formulas/ is provisioned at runtime by gt install / gt doctor fix.
+
+# Gas Town (added by gt)
+.beads/
+.logs/
+logs/
+settings/
+.events.jsonl
+.events.jsonl.lock
+.sqlhistory
+.fork-integration.json
+
+# Nix build
+result
+
+# bv (beads viewer) local config and caches
+.bv/
+
+# Opencode
+.opencode/
+
+# Gas Town (added by gt)
+__pycache__/
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
+
+# Beads / Dolt files (added by bd init)
+.beads-credential-key
+
+# Gas Town (added by gt)
+.runtime/
+CLAUDE.local.md
+
+# Fork research notes (private — not for public upstream)
+docs/fork-info/
+
+# Gas Town (added by gt)
+GEMINI.md
